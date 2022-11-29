@@ -17,11 +17,11 @@ WandB logs are also included
    The dataset structure must be like the following:
     ```
     :file_folder: path/to/dataset/
-        :open_file_folder: train/
+        train/
          ┣ 000.jpeg
          ┣ 001.jpg
          ┗ 002.png
-        :open_file_folder: test/
+        test/
          ┣ 003.jpeg
          ┣ 004.jpg
          ┗ 005.png

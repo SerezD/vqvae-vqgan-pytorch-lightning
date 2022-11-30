@@ -16,12 +16,12 @@ WandB logs are also included
 2. your dataset can be composed of images in `.png .jpg .bmp .JPEG` formats.  
    The dataset structure must be like the following:
     ```
-    path/to/dataset/
-        train/
-         ┣ 000.jpeg
+     🗂 path/to/dataset/
+        📂 train/
+         ┣ 000 .jpeg
          ┣ 001.jpg
          ┗ 002.png
-        test/
+        📂 test/
          ┣ 003.jpeg
          ┣ 004.jpg
          ┗ 005.png

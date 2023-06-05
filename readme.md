@@ -1,4 +1,4 @@
-# Vector Quantized Variational Auto-Encoder
+# VQ-VAE/GAN Pytorch Lightning
 
 Pytorch lightning implementation of both VQVAE/VQGAN, with different quantization algorithms.
 Uses [FFCV](https://github.com/libffcv/ffcv) for fast data loading and [WandB](https://github.com/wandb/wandb)

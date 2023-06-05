@@ -1,9 +1,0 @@
-numpy>=1.23.4
-matplotlib>=3.5.3
-wandb>=0.13.5
-torch>=1.13.0
-torchmetrics>=0.10.3
-pytorch-lightning>=1.8
-einops>=0.6.0
-pillow>=9.2.0
-pyyaml>=6.0

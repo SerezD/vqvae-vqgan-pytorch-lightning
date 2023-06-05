@@ -1,0 +1,27 @@
+name: vqvae
+channels:
+  - pytorch
+  - conda-forge
+  - nvidia
+  - defaults
+dependencies:
+  - pytorch-cuda>=11.7
+  - torchaudio>=2.0.1
+  - pytorch>=2.0.0
+  - torchvision>=0.15.1
+  - cupy
+  - pkg-config
+  - libjpeg-turbo>=2.1.4
+  - opencv
+  - numba
+  - pytorch-lightning>=2.0.0
+  - einops
+  - wandb
+  - kornia
+  - scipy
+  - matplotlib
+  - pip
+  - pip:
+    - ffcv>=1.0.0
+    - ffcv_pl
+    - scheduling_utils

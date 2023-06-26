@@ -42,6 +42,7 @@ https://www.anaconda.com/blog/a-faster-conda-for-a-growing-community
 ```
 # Dependencies Install 
 conda env create --file environment.yml
+conda activate vqvae
 
 # package install (after cloning)
 pip install .
@@ -49,7 +50,7 @@ pip install .
 
 ### Datasets and DataLoaders
 
-This repository allow for both fast (`FFCV`) and standard pytorch-lightning data loading.
+This repository allows for both fast (`FFCV`) and standard pytorch-lightning data loading.
 
 In each case, your dataset can be composed of images in `.png .jpg .bmp .JPEG` formats.  
 The dataset structure must be like the following:

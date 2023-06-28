@@ -117,8 +117,8 @@ def main():
     project_name = str(args.wandb_project)
     wandb_id = args.wandb_id
 
-    save_checkpoint_dir = str(args.save_path)
     run_name = str(args.run_name)
+    save_checkpoint_dir = f'{args.save_path}{run_name}/'
     save_every_n_epochs = int(args.save_every_n_epochs)
 
     load_checkpoint_path = args.loading_path

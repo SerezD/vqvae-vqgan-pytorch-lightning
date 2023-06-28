@@ -155,7 +155,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         """
         # init warmup/decay lr
         lr = float(self.t_conf['lr'])
-        if self.t_conf['warmup_epoch'] is not None and self.t_conf['decay_epoch'] is not None:
+        if self.t_conf['warmup_epochs'] is not None and self.t_conf['decay_epochs'] is not None:
 
             warmup_step_start = 0
             warmup_step_end = self.t_conf['warmup_epoch'] * self.trainer.num_training_batches
@@ -163,16 +163,16 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
             self.warmup_then_decay_lr = LinearCosineScheduler(warmup_step_start, decay_step_end,
                                                               lr, lr / 10, warmup_step_end)
 
-        elif self.t_conf['warmup_epoch'] is not None:
+        elif self.t_conf['warmup_epochs'] is not None:
 
             warmup_step_start = 0
-            warmup_step_end = self.t_conf['warmup_epoch'] * self.trainer.num_training_batches
+            warmup_step_end = self.t_conf['warmup_epochs'] * self.trainer.num_training_batches
             self.warmup_lr = LinearScheduler(warmup_step_start, warmup_step_end, 1e-20, lr)
 
-        elif self.t_conf['decay_epoch'] is not None:
+        elif self.t_conf['decay_epochs'] is not None:
 
             decay_step_start = 0
-            decay_step_end = self.t_conf['decay_epoch'] * self.trainer.num_training_batches
+            decay_step_end = self.t_conf['decay_epochs'] * self.trainer.num_training_batches
             self.decay_lr = CosineScheduler(decay_step_start, decay_step_end, lr, lr / 10)
 
         # if quantizer is gumbel

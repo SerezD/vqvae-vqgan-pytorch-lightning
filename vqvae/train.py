@@ -86,6 +86,10 @@ def get_datamodule(loader_type: str, dirpath: str, image_size: int, batch_size: 
 
 
 def main():
+
+    # only for A100
+    torch.set_float32_matmul_precision('high')
+
     args = parse_args()
     conf = get_model_conf(args.params_file)
 
@@ -135,8 +139,8 @@ def main():
               'betas': conf['training']['betas'],
               'eps': conf['training']['eps'],
               'weight_decay': conf['training']['weight_decay'],
-              'warmup_epoch': conf['training']['warmup_epoch'] if 'warmup_epoch' in conf['training'].keys() else None,
-              'decay_epoch': conf['training']['decay_epoch'] if 'decay_epoch' in conf['training'].keys() else None,
+              'warmup_epochs': conf['training']['warmup_epochs'] if 'warmup_epochs' in conf['training'].keys() else None,
+              'decay_epochs': conf['training']['decay_epochs'] if 'decay_epochs' in conf['training'].keys() else None,
               }
 
     # get model

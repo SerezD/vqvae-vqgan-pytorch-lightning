@@ -85,10 +85,22 @@ def get_datamodule(loader_type: str, dirpath: str, image_size: int, batch_size: 
             raise ValueError(f"loader type not recognized: {loader_type}")
 
 
+def set_matmul_precision():
+    """
+    If using Ampere Gpus enable using tensor cores
+    """
+
+    gpu_cores = os.popen('nvidia-smi -L').readlines()[0]
+
+    if 'A100' in gpu_cores.lower():
+        torch.set_float32_matmul_precision('high')
+        print('[INFO] set matmul precision "high"')
+
+
 def main():
 
     # only for A100
-    torch.set_float32_matmul_precision('high')
+    set_matmul_precision()
 
     args = parse_args()
     conf = get_model_conf(args.params_file)

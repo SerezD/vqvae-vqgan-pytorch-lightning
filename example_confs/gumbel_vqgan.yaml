@@ -11,7 +11,7 @@ autoencoder:
     - 4
 
 quantizer:
-  num_embeddings: 4096
+  num_embeddings: 1024
   embedding_dim: 256
   type: gumbel
   params:

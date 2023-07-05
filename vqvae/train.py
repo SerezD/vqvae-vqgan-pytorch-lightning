@@ -10,6 +10,7 @@ from ffcv.transforms import ToTensor, ToTorchImage
 from ffcv_pl.data_loading import FFCVDataModule
 from ffcv_pl.ffcv_utils.augmentations import DivideImage255
 from ffcv_pl.ffcv_utils.decoders import FFCVDecoders
+from pytorch_lightning.strategies import DDPStrategy
 
 from vqvae.model import VQVAE
 from data.datamodules import ImageDataModule
@@ -155,6 +156,9 @@ def main():
               'decay_epochs': conf['training']['decay_epochs'] if 'decay_epochs' in conf['training'].keys() else None,
               }
 
+    # check if using adversarial loss
+    use_adversarial = l_conf is not None and 'adversarial_params' in l_conf.keys()
+
     # get model
     if resume:
         # image_size: int, ae_conf: dict, q_conf: dict, l_conf: dict, t_conf: dict, init_cb: bool = True,
@@ -177,13 +181,19 @@ def main():
     callbacks = [LearningRateMonitor(), checkpoint_callback]
 
     # trainer
-    trainer = pl.Trainer(strategy='ddp', accelerator='gpu', num_nodes=num_nodes, devices=gpus,
+    # set find unused parameters if using vqgan (adversarial training)
+    trainer = pl.Trainer(strategy=DDPStrategy(find_unused_parameters=use_adversarial),
+                         accelerator='gpu', num_nodes=num_nodes, devices=gpus,
                          callbacks=callbacks, deterministic=True, logger=logger, max_epochs=max_epochs)
 
     print(f"[INFO] workers: {workers}")
     print(f"[INFO] batch size per device: {batch_size_per_device}")
     print(f"[INFO] cumulative batch size (all devices): {cumulative_batch_size}")
     print(f"[INFO] final learning rate: {learning_rate}")
+
+    # check to prevent later error
+    if use_adversarial and batch_size_per_device % 4 != 0:
+        raise RuntimeError('batch size per device must be divisible by 4! (due to stylegan discriminator forward pass)')
 
     trainer.fit(model, datamodule, ckpt_path=load_checkpoint_path)
 

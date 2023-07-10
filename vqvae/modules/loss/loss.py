@@ -129,7 +129,8 @@ class VQLPIPSWithDiscriminator(nn.Module):
         d_weight = 1. if current_epoch >= self.adversarial_start_epoch else 0.
         compute_r1 = self.training and current_step % self.r1_regularization_every == 0 and d_weight == 1.
 
-        logits_real = self.discriminator(images.contiguous().requires_grad_(compute_r1))
+        images = images.contiguous().requires_grad_(compute_r1)
+        logits_real = self.discriminator(images)
         logits_fake = self.discriminator(reconstructions.contiguous().detach())
         d_loss = discriminator_loss(logits_real, logits_fake, loss_type=self.adversarial_loss_type)
 

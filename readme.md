@@ -110,3 +110,7 @@ Once dataset and configuration file are created, run training script like:
                           --logging \  # will log results to wandb
                           --workers 8               
 ```
+
+### Metrics and Pretrained Models
+
+Coming Soon...

@@ -1,5 +1,6 @@
 import torch
 import pytorch_lightning as pl
+from ffcv.loader import OrderOption
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers.wandb import WandbLogger
 
@@ -9,7 +10,7 @@ from ffcv.transforms import ToTensor, ToTorchImage
 
 from ffcv_pl.data_loading import FFCVDataModule
 from ffcv_pl.ffcv_utils.augmentations import DivideImage255
-from ffcv_pl.ffcv_utils.decoders import FFCVDecoders
+from ffcv_pl.ffcv_utils.utils import FFCVPipelineManager
 from pytorch_lightning.strategies import DDPStrategy
 
 from vqvae.model import VQVAE
@@ -70,17 +71,32 @@ def get_datamodule(loader_type: str, dirpath: str, image_size: int, batch_size: 
 
         elif loader_type == 'ffcv':
 
-            train_file = f'{dirpath}train.beton'
-            val_file = f'{dirpath}validation.beton'
-            train_decoder = FFCVDecoders(image_transforms=[CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
-                                                           ToTensor(), ToTorchImage(),
-                                                           DivideImage255(dtype=torch.float32)])
-            val_decoder = FFCVDecoders(image_transforms=[CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
-                                                         ToTensor(), ToTorchImage(),
-                                                         DivideImage255(dtype=torch.float32)])
+            train_manager = FFCVPipelineManager(
+                file_path=f'{dirpath}train.beton',
+                pipeline_transforms=[
+                    [
+                        CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
+                        ToTensor(),
+                        ToTorchImage(),
+                        DivideImage255(dtype=torch.float32)
+                    ]
+                ],
+                ordering=OrderOption.RANDOM
+            )
 
-            return FFCVDataModule(batch_size, workers, is_dist, (RGBImageField,), train_file, val_file,
-                                  train_decoders=train_decoder, val_decoders=val_decoder, seed=seed)
+            val_manager = FFCVPipelineManager(
+                file_path=f'{dirpath}validation.beton',
+                pipeline_transforms=[
+                    [
+                        CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
+                        ToTensor(),
+                        ToTorchImage(),
+                        DivideImage255(dtype=torch.float32)
+                    ]
+                ]
+            )
+
+            return FFCVDataModule(batch_size, workers, is_dist, train_manager, val_manager, seed=seed)
 
         else:
             raise ValueError(f"loader type not recognized: {loader_type}")

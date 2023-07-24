@@ -229,7 +229,7 @@ class GumbelVectorQuantizer(BaseVectorQuantizer):
         hard = self.straight_through if self.training else True
 
         soft_one_hot = F.gumbel_softmax(x, tau=self.temp, dim=1, hard=hard)
-        quantized = einsum('b n h w, n d -> b d h w', soft_one_hot, self.get_codebook())
+        quantized = einsum(soft_one_hot, self.get_codebook(), 'b n h w, n d -> b d h w')
 
         # + kl divergence to the prior loss
         qy = F.softmax(x, dim=1)

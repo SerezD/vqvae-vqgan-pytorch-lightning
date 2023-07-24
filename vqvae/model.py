@@ -120,7 +120,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         channel_multipliers = ae_conf['channel_multipliers']
         final_conv_channels = self.cb_size if q_conf['type'] == 'gumbel' else self.latent_dim
         self.encoder = Encoder(channels, num_res_blocks, channel_multipliers, final_conv_channels)
-        self.decoder = Decoder(channels, num_res_blocks, channel_multipliers, final_conv_channels)
+        self.decoder = Decoder(channels, num_res_blocks, channel_multipliers, self.latent_dim)
 
         # Loss
         if load_loss:

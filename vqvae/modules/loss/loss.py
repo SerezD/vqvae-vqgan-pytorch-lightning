@@ -35,7 +35,7 @@ def discriminator_loss(logits_real: torch.Tensor, logits_fake: torch.Tensor, los
         fake_loss = functional.relu(1.0 + logits_fake)
     elif loss_type == 'non-saturating':
         real_loss = functional.binary_cross_entropy_with_logits(logits_real, target=torch.ones_like(logits_real))
-        fake_loss = functional.binary_cross_entropy_with_logits(logits_fake, target=torch.ones_like(logits_fake))
+        fake_loss = functional.binary_cross_entropy_with_logits(logits_fake, target=torch.zeros_like(logits_fake))
     else:
         raise ValueError(f'unknown loss_type: {loss_type}')
 

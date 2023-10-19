@@ -33,25 +33,29 @@ def main():
         train_dataset = ImageDataset(folder=args.train_folder, image_size=args.max_resolution, ffcv=True)
 
         # https://docs.ffcv.io/api/fields.html
-        create_beton_wrapper(train_dataset, f"{args.output_folder}/train.beton")
+        fields = (RGBImageField(write_mode='jpg', max_resolution=args.max_resolution),)
+        create_beton_wrapper(train_dataset, f"{args.output_folder}/train.beton", fields=fields)
 
     if args.val_folder is not None:
         val_dataset = ImageDataset(folder=args.val_folder, image_size=args.max_resolution, ffcv=True)
 
         # https://docs.ffcv.io/api/fields.html
-        create_beton_wrapper(val_dataset, f"{args.output_folder}/validation.beton")
+        fields = (RGBImageField(write_mode='jpg', max_resolution=args.max_resolution),)
+        create_beton_wrapper(val_dataset, f"{args.output_folder}/validation.beton", fields=fields)
 
     if args.test_folder is not None:
         test_dataset = ImageDataset(folder=args.test_folder, image_size=args.max_resolution, ffcv=True)
 
         # https://docs.ffcv.io/api/fields.html
-        create_beton_wrapper(test_dataset, f"{args.output_folder}/test.beton")
+        fields = (RGBImageField(write_mode='jpg', max_resolution=args.max_resolution),)
+        create_beton_wrapper(test_dataset, f"{args.output_folder}/test.beton", fields=fields)
 
     if args.predict_folder is not None:
         predict_dataset = ImageDataset(folder=args.predict_folder, image_size=args.max_resolution, ffcv=True)
 
         # https://docs.ffcv.io/api/fields.html
-        create_beton_wrapper(predict_dataset, f"{args.output_folder}/predict.beton")
+        fields = (RGBImageField(write_mode='jpg', max_resolution=args.max_resolution),)
+        create_beton_wrapper(predict_dataset, f"{args.output_folder}/predict.beton", fields=fields)
 
 
 if __name__ == '__main__':

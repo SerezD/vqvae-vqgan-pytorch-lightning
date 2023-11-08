@@ -4,7 +4,6 @@ from ffcv.loader import OrderOption
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers.wandb import WandbLogger
 
-from ffcv.fields import RGBImageField
 from ffcv.fields.rgb_image import CenterCropRGBImageDecoder
 from ffcv.transforms import ToTensor, ToTorchImage
 
@@ -78,7 +77,7 @@ def get_datamodule(loader_type: str, dirpath: str, image_size: int, batch_size: 
                         CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
                         ToTensor(),
                         ToTorchImage(),
-                        DivideImage255(dtype=torch.float32)
+                        DivideImage255(dtype=torch.float16)
                     ]
                 ],
                 ordering=OrderOption.RANDOM
@@ -91,7 +90,7 @@ def get_datamodule(loader_type: str, dirpath: str, image_size: int, batch_size: 
                         CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
                         ToTensor(),
                         ToTorchImage(),
-                        DivideImage255(dtype=torch.float32)
+                        DivideImage255(dtype=torch.float16)
                     ]
                 ]
             )
@@ -104,12 +103,14 @@ def get_datamodule(loader_type: str, dirpath: str, image_size: int, batch_size: 
 
 def set_matmul_precision():
     """
-    If using Ampere Gpus enable using tensor cores
+    If using Ampere Gpus enable using tensor cores.
+    Don't know exactly which other devices can benefit from this, but torch should throw a warning in case.
+    Docs: https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html
     """
 
     gpu_cores = os.popen('nvidia-smi -L').readlines()[0]
 
-    if 'A100' in gpu_cores.lower():
+    if 'A100' in gpu_cores:
         torch.set_float32_matmul_precision('high')
         print('[INFO] set matmul precision "high"')
 
@@ -198,9 +199,10 @@ def main():
 
     # trainer
     # set find unused parameters if using vqgan (adversarial training)
-    trainer = pl.Trainer(strategy=DDPStrategy(find_unused_parameters=use_adversarial),
-                         accelerator='gpu', num_nodes=num_nodes, devices=gpus,
-                         callbacks=callbacks, deterministic=True, logger=logger, max_epochs=max_epochs)
+    trainer = pl.Trainer(strategy=DDPStrategy(find_unused_parameters=use_adversarial, static_graph=True),
+                         accelerator='gpu', num_nodes=num_nodes, devices=gpus, precision='16-mixed',
+                         callbacks=callbacks, deterministic=True, logger=logger,
+                         max_epochs=max_epochs, check_val_every_n_epoch=5)
 
     print(f"[INFO] workers: {workers}")
     print(f"[INFO] batch size per device: {batch_size_per_device}")

@@ -13,7 +13,7 @@ class ImageDataset(Dataset):
                               list(pathlib.Path(folder).rglob('*.bmp')) + list(pathlib.Path(folder).rglob('*.JPEG')))
         self.ffcv = ffcv
 
-        self.transforms = Compose([ToTensor(), Resize(image_size, antialias=True)])
+        self.transforms = Compose([ToTensor(), Resize((image_size, image_size), antialias=True)])
 
     def __len__(self):
         return len(self.samples)

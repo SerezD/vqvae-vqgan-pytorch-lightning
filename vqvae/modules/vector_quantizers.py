@@ -225,13 +225,13 @@ class GumbelVectorQuantizer(BaseVectorQuantizer):
         :return quantized_x (B, D, H, W), detached codes (B, H*W), latent_loss
         """
 
-        # if not training always quantize
+        # deterministic quantization during inference
         hard = self.straight_through if self.training else True
 
         soft_one_hot = F.gumbel_softmax(x, tau=self.temp, dim=1, hard=hard)
         quantized = einsum(soft_one_hot, self.get_codebook(), 'b n h w, n d -> b d h w')
 
-        # + kl divergence to the prior loss
+        # + kl divergence to the prior (uniform) loss, increase cb usage
         qy = F.softmax(x, dim=1)
         kl_loss = self.kl_cost * torch.sum(qy * torch.log(qy * self.num_embeddings + 1e-10), dim=1).mean()
 

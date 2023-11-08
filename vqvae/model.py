@@ -3,7 +3,7 @@ from typing import Any
 import pytorch_lightning as pl
 import torch
 from einops import rearrange, pack
-from scheduling_utils.schedulers import LinearScheduler, CosineScheduler, LinearCosineScheduler
+from scheduling_utils.schedulers_cpp import LinearScheduler, CosineScheduler, LinearCosineScheduler
 from torchvision.utils import make_grid
 import wandb
 
@@ -29,6 +29,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         :param q_conf: quantizer type and configuration.
                        num_embeddings: int,
                        embedding_dim: int,
+                       reinit_every_n_epochs: int or None,
                        type: choice ['standard', 'ema', 'gumbel', 'entropy']
                        params: dict depending on type
                                 standard --> {commitment_cost: float}
@@ -76,6 +77,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         # quantizer
         self.cb_size = q_conf['num_embeddings']
         self.latent_dim = q_conf['embedding_dim']
+        self.reinit_every_n_epochs = q_conf['reinit_every_n_epochs']
 
         if q_conf['type'] == 'standard':
 
@@ -230,8 +232,9 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         images = self.preprocess_batch(batch[0] if isinstance(batch, tuple) else batch)
         x_recon, q_loss, used_indices = self.forward(images)
 
-        # log reconstructions
-        self.log_reconstructions(batch_index, images, x_recon, t_or_v='t')
+        # log reconstructions (every 5 epochs, for one batch)
+        if batch_index == 2 and self.current_epoch % 5 == 0:
+            self.log_reconstructions(batch_index, images, x_recon, t_or_v='t')
 
         if isinstance(self.criterion, VQLPIPSWithDiscriminator):
             ae_opt, disc_opt = self.optimizers()
@@ -270,7 +273,22 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         self.log('train/gen_loss', g_loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
         self.log('train/disc_loss', disc_loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
 
+        # batch index count (use non-deterministic for this operation)
+        torch.use_deterministic_algorithms(False)
+        used_indices = torch.bincount(used_indices.view(-1), minlength=self.cb_size)
+        torch.use_deterministic_algorithms(True)
+
+        self.train_epoch_usage_count = used_indices if self.train_epoch_usage_count is None else + used_indices
+
         return loss
+
+    def on_train_epoch_end(self):
+
+        if (self.reinit_every_n_epochs is not None and self.current_epoch % self.reinit_every_n_epochs == 0
+                and self.current_epoch > 0):
+            self.quantizer.reinit_unused_codes(self.quantizer.get_codebook_usage(self.train_epoch_usage_count)[0])
+
+        self.train_epoch_usage_count = None
 
     def validation_step(self, batch: Any, batch_index: int):
         """
@@ -281,13 +299,9 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         images = self.preprocess_batch(batch[0] if isinstance(batch, tuple) else batch)
         x_recon, q_loss, used_indices = self.forward(images)
 
-        # log reconstructions
-        self.log_reconstructions(batch_index, images, x_recon, t_or_v='v')
-
-        # batch index count (use non-deterministic for this operation)
-        torch.use_deterministic_algorithms(False)
-        used_indices = torch.bincount(used_indices.view(-1), minlength=self.cb_size)
-        torch.use_deterministic_algorithms(True)
+        # log reconstructions (validation is done every 5 epochs by default)
+        if batch_index == 2:
+            self.log_reconstructions(batch_index, images, x_recon, t_or_v='v')
 
         if isinstance(self.criterion, VQLPIPSWithDiscriminator):
 
@@ -313,6 +327,11 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         self.log('validation/gen_loss', g_loss.cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
         self.log('validation/disc_loss', disc_loss.cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
 
+        # batch index count (use non-deterministic for this operation)
+        torch.use_deterministic_algorithms(False)
+        used_indices = torch.bincount(used_indices.view(-1), minlength=self.cb_size)
+        torch.use_deterministic_algorithms(True)
+
         self.val_epoch_usage_count = used_indices if self.val_epoch_usage_count is None else + used_indices
         return loss
 
@@ -320,7 +339,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         """
         Compute and log metrics on codebook usage
         """
-        perplexity, cb_usage = self.quantizer.get_codebook_usage(self.val_epoch_usage_count)
+        _, perplexity, cb_usage = self.quantizer.get_codebook_usage(self.val_epoch_usage_count)
 
         # log results
         self.log(f"val_metrics/used_codebook", cb_usage, sync_dist=True)
@@ -404,18 +423,18 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
     @torch.no_grad()
     def log_reconstructions(self, batch_index, ground_truths, reconstructions, t_or_v='t'):
         """
-        log reconstructions every 5 epochs
+        log reconstructions
         """
-        if batch_index == 2 and self.current_epoch % 5 == 0:
-            b = min(ground_truths.shape[0], 8)
-            panel_name = 'train' if t_or_v == 't' else 'validation'
 
-            display, _ = pack([self.preprocess_visualization(ground_truths[:b]),
-                               self.preprocess_visualization(reconstructions[:b])], '* c h w')
+        b = min(ground_truths.shape[0], 8)
+        panel_name = 'train' if t_or_v == 't' else 'validation'
 
-            display = make_grid(display, nrow=b)
-            display = wandb.Image(display)
-            self.logger.experiment.log({f'{panel_name}/reconstructions': display})
+        display, _ = pack([self.preprocess_visualization(ground_truths[:b]),
+                           self.preprocess_visualization(reconstructions[:b])], '* c h w')
+
+        display = make_grid(display, nrow=b)
+        display = wandb.Image(display)
+        self.logger.experiment.log({f'{panel_name}/reconstructions': display})
 
     def get_tokens(self, images: torch.Tensor) -> torch.IntTensor:
         """

@@ -25,7 +25,8 @@ class BaseVQVAE(ABC):
         self.warmup_lr = None
         self.decay_lr = None
 
-        # logging for validation epoch end (may never be used)
+        # codebook usage counts for re-init (train) or logging (validation) (may never be used)
+        self.train_epoch_usage_count = None
         self.val_epoch_usage_count = None
 
     @torch.no_grad()

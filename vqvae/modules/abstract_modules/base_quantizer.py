@@ -76,5 +76,27 @@ class BaseVectorQuantizer(ABC, nn.Module):
         n = index_count.shape[0]
         used_codebook = (torch.count_nonzero(used_indices).item() * 100) / n
 
-        return perplexity, used_codebook
+        return used_indices, perplexity, used_codebook
 
+    @torch.no_grad()
+    def reinit_unused_codes(self, codebook_usage: torch.Tensor):
+        """
+        Re-initialize unused vectors according to the likelihood of used ones.
+        :param codebook_usage: (n, ) where n is the codebook size, distribution probability of codebook usage.
+        """
+
+        device = codebook_usage.device
+        n = codebook_usage.shape[0]
+
+        # compute unused codes
+        unused_codes = torch.nonzero(torch.eq(codebook_usage, torch.zeros(n, device=device))).squeeze(1)
+        n_unused = unused_codes.shape[0]
+
+        # sample according to most used codes.
+        torch.use_deterministic_algorithms(False)
+        replacements = torch.multinomial(codebook_usage, n_unused, replacement=True)
+        torch.use_deterministic_algorithms(True)
+
+        # update unused codes
+        new_codes = self.codebook.weight[replacements]
+        self.codebook.weight[unused_codes] = new_codes

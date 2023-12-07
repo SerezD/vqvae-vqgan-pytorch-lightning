@@ -6,7 +6,8 @@ from .utils import get_state_dict
 
 
 class LPIPS(nn.Module):
-    r"""Creates a criterion that measures
+    """
+    Creates a criterion that measures
     Learned Perceptual Image Patch Similarity (LPIPS).
 
     Arguments:
@@ -28,10 +29,10 @@ class LPIPS(nn.Module):
         self.lin.load_state_dict(get_state_dict(net_type, version))
 
     def forward(self, x: torch.Tensor, y: torch.Tensor):
+
         feat_x, feat_y = self.net(x), self.net(y)
 
         diff = [(fx - fy) ** 2 for fx, fy in zip(feat_x, feat_y)]
         res = [l(d).mean((2, 3), True) for d, l in zip(diff, self.lin)]
 
-#        return torch.sum(torch.cat(res, 0), 0, True)
         return torch.mean(torch.sum(torch.cat(res, 1), 1))

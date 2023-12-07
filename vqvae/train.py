@@ -43,6 +43,7 @@ def parse_args():
     parser.add_argument('--wandb_id', type=str,
                         help='wandb id of the run. Useful for resuming logging of a model', default=None)
     parser.add_argument('--workers', type=int, help='num of parallel workers', default=1)
+    parser.add_argument('--num_nodes', type=int, help='number of gpu nodes used for training', default=1)
 
     return parser.parse_args()
 
@@ -124,8 +125,8 @@ def main():
     conf = get_model_conf(args.params_file)
 
     # configuration params (assumes some env variables in case of multi-node setup)
-    num_nodes = int(os.getenv('NODES')) if os.getenv('NODES') is not None else 1
     gpus = torch.cuda.device_count()
+    num_nodes = args.num_nodes
     rank = int(os.getenv('NODE_RANK')) if os.getenv('NODE_RANK') is not None else 0
     is_dist = gpus > 1 or num_nodes > 1
 
@@ -174,7 +175,9 @@ def main():
               }
 
     # check if using adversarial loss
-    use_adversarial = l_conf is not None and 'adversarial_params' in l_conf.keys()
+    use_adversarial = (l_conf is not None
+                       and 'adversarial_params' in l_conf.keys()
+                       and l_conf['adversarial_params'] is not None)
 
     # get model
     if resume:
@@ -199,7 +202,7 @@ def main():
 
     # trainer
     # set find unused parameters if using vqgan (adversarial training)
-    trainer = pl.Trainer(strategy=DDPStrategy(find_unused_parameters=use_adversarial, static_graph=True),
+    trainer = pl.Trainer(strategy=DDPStrategy(find_unused_parameters=use_adversarial, static_graph=not use_adversarial),
                          accelerator='gpu', num_nodes=num_nodes, devices=gpus, precision='16-mixed',
                          callbacks=callbacks, deterministic=True, logger=logger,
                          max_epochs=max_epochs, check_val_every_n_epoch=5)

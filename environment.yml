@@ -5,7 +5,8 @@ channels:
   - nvidia
   - defaults
 dependencies:
-  - pytorch-cuda>=11.7
+  - python<3.11
+  - pytorch-cuda
   - torchaudio>=2.0.1
   - pytorch>=2.0.0
   - torchvision>=0.15.1
@@ -13,15 +14,18 @@ dependencies:
   - pkg-config
   - libjpeg-turbo>=2.1.4
   - opencv
-  - numba
+  - numba==0.56.2
   - pytorch-lightning>=2.0.0
   - einops
-  - wandb
   - kornia
+  - cudatoolkit-dev
+  - wandb
   - scipy
+  - ninja
   - matplotlib
   - pip
   - pip:
     - ffcv>=1.0.0
     - ffcv_pl
+    - lightning-utilities
     - scheduling_utils

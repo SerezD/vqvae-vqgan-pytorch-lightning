@@ -21,9 +21,7 @@ class BaseVQVAE(ABC):
                                                              same_on_batch=False)
 
         # init values for child classes (may never be implemented)
-        self.warmup_then_decay_lr = None
-        self.warmup_lr = None
-        self.decay_lr = None
+        self.scheduler = None
 
         # codebook usage counts for re-init (train) or logging (validation) (may never be used)
         self.train_epoch_usage_count = None

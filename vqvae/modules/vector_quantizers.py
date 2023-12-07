@@ -232,6 +232,9 @@ class GumbelVectorQuantizer(BaseVectorQuantizer):
         quantized = einsum(soft_one_hot, self.get_codebook(), 'b n h w, n d -> b d h w')
 
         # + kl divergence to the prior (uniform) loss, increase cb usage
+        # Note:
+        #       KL(P(x), Q(x)) = sum_x (P(x) * log(P(x) / Q(x)))
+        #       in this case: P(x) is qy, Q(x) is uniform distribution (1 / num_embeddings)
         qy = F.softmax(x, dim=1)
         kl_loss = self.kl_cost * torch.sum(qy * torch.log(qy * self.num_embeddings + 1e-10), dim=1).mean()
 

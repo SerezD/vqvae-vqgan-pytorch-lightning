@@ -9,7 +9,7 @@ import wandb
 
 from vqvae.modules.abstract_modules.base_autoencoder import BaseVQVAE
 from vqvae.modules.autoencoder import Encoder, Decoder
-from vqvae.modules.loss.loss import VQLPIPSWithDiscriminator
+from vqvae.modules.loss.loss import VQLPIPSWithDiscriminator, VQLPIPS
 from vqvae.modules.vector_quantizers import VectorQuantizer, EMAVectorQuantizer, GumbelVectorQuantizer, \
     EntropyVectorQuantizer
 
@@ -47,10 +47,11 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
                           l1_weight: float --> weight for log_laplace loss
                           l2_weight: float --> weight for standard l2 loss
                           perc_weight: float --> weight for perceptual loss
-                          adversarial_params: dict
+                          adversarial_params: dict or None (if None, do not use Discriminator but only PLoss).
                               start_epoch: int --> suggestion is to wait at least one epoch.
                               loss_type: str = "hinge" or "non-saturating"
-                              adaptive_weight: float --> weight for generator loss, modulated according to gradients
+                              g_weight: float --> generator loss base weight
+                              use_adaptive: bool --> scale g_weight adaptively, according to last decoder layer
                               r1_reg_weight: float --> weight for R1 regularization of Discriminator
                               r1_reg_every: int --> R1 regularization to be applied every n steps
 
@@ -128,6 +129,9 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         if load_loss:
             if l_conf is None:
                 self.criterion = torch.nn.MSELoss()
+            elif l_conf['adversarial_params'] is None:
+                # use lpips without Discriminator (just for ablation)
+                self.criterion = VQLPIPS(l_conf['l1_weight'], l_conf['l2_weight'], l_conf['perc_weight'])
             else:
                 self.criterion = VQLPIPSWithDiscriminator(image_size, l_conf['l1_weight'], l_conf['l2_weight'],
                                                           l_conf['perc_weight'], l_conf['adversarial_params'])
@@ -162,20 +166,19 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
             warmup_step_start = 0
             warmup_step_end = self.t_conf['warmup_epoch'] * self.trainer.num_training_batches
             decay_step_end = self.t_conf['decay_epoch'] * self.trainer.num_training_batches
-            self.warmup_then_decay_lr = LinearCosineScheduler(warmup_step_start, decay_step_end,
-                                                              lr, lr / 10, warmup_step_end)
+            self.scheduler = LinearCosineScheduler(warmup_step_start, decay_step_end, lr, lr / 10, warmup_step_end)
 
         elif self.t_conf['warmup_epochs'] is not None:
 
             warmup_step_start = 0
             warmup_step_end = self.t_conf['warmup_epochs'] * self.trainer.num_training_batches
-            self.warmup_lr = LinearScheduler(warmup_step_start, warmup_step_end, 1e-20, lr)
+            self.scheduler = LinearScheduler(warmup_step_start, warmup_step_end, 1e-20, lr)
 
         elif self.t_conf['decay_epochs'] is not None:
 
             decay_step_start = 0
             decay_step_end = self.t_conf['decay_epochs'] * self.trainer.num_training_batches
-            self.decay_lr = CosineScheduler(decay_step_start, decay_step_end, lr, lr / 10)
+            self.scheduler = CosineScheduler(decay_step_start, decay_step_end, lr, lr / 10)
 
         # if quantizer is gumbel
         if isinstance(self.quantizer, GumbelVectorQuantizer):
@@ -197,12 +200,8 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         current_step = (self.current_epoch * self.trainer.num_training_batches) + batch_index
 
         # lr update
-        if self.warmup_then_decay_lr is not None:
-            step_lr = self.warmup_then_decay_lr.step(current_step)
-        elif self.warmup_lr is not None:
-            step_lr = self.warmup_lr.step(current_step)
-        elif self.decay_lr is not None:
-            step_lr = self.decay_lr.step(current_step)
+        if self.scheduler is not None:
+            step_lr = self.scheduler.step(current_step)
         else:
             step_lr = self.t_conf['lr']
 
@@ -240,29 +239,34 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
             ae_opt, disc_opt = self.optimizers()
 
             # Autoencoder Optimization
+            ae_opt.zero_grad()
             res = self.criterion.forward_autoencoder(q_loss, images, x_recon, self.current_epoch,
                                                      last_layer=self.decoder.conv_out.weight)
-            loss, l1_loss, l2_loss, p_loss, g_loss, adaptive_weight = res
+            loss, l1_loss, l2_loss, p_loss, g_loss, g_weight = res
 
-            ae_opt.zero_grad()
             self.manual_backward(loss)
             ae_opt.step()
 
             # Discriminator Optimization
-            step = (self.current_epoch * self.trainer.num_training_batches) + batch_index
-            disc_loss, r1_penalty = self.criterion.forward_discriminator(images, x_recon, self.current_epoch, step)
-
             disc_opt.zero_grad()
-            self.manual_backward(disc_loss)
+            step = (self.current_epoch * self.trainer.num_training_batches) + batch_index
+            loss, d_loss, r1_penalty = self.criterion.forward_discriminator(images, x_recon, self.current_epoch, step)
+
+            self.manual_backward(loss)
             disc_opt.step()
+
+        elif isinstance(self.criterion, VQLPIPS):
+            loss, l1_loss, l2_loss, p_loss = self.criterion(q_loss, images, x_recon)
+            g_loss, d_loss = torch.zeros(1), torch.zeros(1)
+            g_weight, r1_penalty = 0., 0.
 
         else:
             l2_loss = self.criterion(x_recon, images)
-            l1_loss, g_loss, p_loss, disc_loss = torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1)
-            adaptive_weight, r1_penalty = 0., 0.
+            l1_loss, g_loss, p_loss, d_loss = torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1)
+            g_weight, r1_penalty = 0., 0.
             loss = q_loss + l2_loss
 
-        self.log('adaptive_weight', adaptive_weight, sync_dist=True, on_step=False, on_epoch=True)
+        self.log('g_weight', g_weight, sync_dist=True, on_step=False, on_epoch=True)
         self.log('r1_penalty', r1_penalty, sync_dist=True, on_step=False, on_epoch=True)
 
         self.log('train/loss', loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
@@ -271,7 +275,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         self.log('train/quant_loss', q_loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
         self.log('train/perc_loss', p_loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
         self.log('train/gen_loss', g_loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
-        self.log('train/disc_loss', disc_loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
+        self.log('train/disc_loss', d_loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
 
         # batch index count (use non-deterministic for this operation)
         torch.use_deterministic_algorithms(False)
@@ -312,11 +316,15 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
 
             # Discriminator part
             step = (self.current_epoch * self.trainer.num_training_batches) + batch_index
-            disc_loss, _ = self.criterion.forward_discriminator(images, x_recon, self.current_epoch, step)
+            _, d_loss, _ = self.criterion.forward_discriminator(images, x_recon, self.current_epoch, step)
+
+        elif isinstance(self.criterion, VQLPIPS):
+            loss, l1_loss, l2_loss, p_loss = self.criterion(q_loss, images, x_recon)
+            g_loss, d_loss = torch.zeros(1), torch.zeros(1)
 
         else:
             l2_loss = self.criterion(x_recon, images)
-            l1_loss, g_loss, p_loss, disc_loss = torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1)
+            l1_loss, g_loss, p_loss, d_loss = torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1)
             loss = q_loss + l2_loss
 
         self.log('validation/loss', loss.cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
@@ -325,7 +333,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         self.log('validation/quant_loss', q_loss.cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
         self.log('validation/perc_loss', p_loss.cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
         self.log('validation/gen_loss', g_loss.cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
-        self.log('validation/disc_loss', disc_loss.cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
+        self.log('validation/disc_loss', d_loss.cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
 
         # batch index count (use non-deterministic for this operation)
         torch.use_deterministic_algorithms(False)
@@ -348,6 +356,10 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         self.val_epoch_usage_count = None
 
         return
+
+    def on_train_end(self):
+        # ensure to destroy c++ scheduler object
+        self.scheduler.destroy()
 
     def configure_optimizers(self):
         def split_decay_groups(named_modules: list, named_parameters: list,

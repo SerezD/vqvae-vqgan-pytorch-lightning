@@ -13,10 +13,16 @@ from vqvae.modules.loss.loss import VQLPIPSWithDiscriminator, VQLPIPS
 from vqvae.modules.vector_quantizers import VectorQuantizer, EMAVectorQuantizer, GumbelVectorQuantizer, \
     EntropyVectorQuantizer
 
+from torchmetrics import MeanSquaredError
+from torchmetrics.image.fid import FrechetInceptionDistance
+from torchmetrics.image.ssim import StructuralSimilarityIndexMeasure
+from torchmetrics.image.psnr import PeakSignalNoiseRatio
+from torchvision.transforms import ConvertImageDtype
+
 
 class VQVAE(BaseVQVAE, pl.LightningModule):
 
-    def __init__(self, image_size: int, ae_conf: dict, q_conf: dict, l_conf: dict or None, t_conf: dict,
+    def __init__(self, image_size: int, ae_conf: dict, q_conf: dict, l_conf: dict or None, t_conf: dict or None,
                  init_cb: bool = True, load_loss: bool = True):
         """
         :param image_size: resolution of (squared) input images
@@ -233,7 +239,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
 
         # log reconstructions (every 5 epochs, for one batch)
         if batch_index == 2 and self.current_epoch % 5 == 0:
-            self.log_reconstructions(batch_index, images, x_recon, t_or_v='t')
+            self.log_reconstructions(images, x_recon, t_or_v='t')
 
         if isinstance(self.criterion, VQLPIPSWithDiscriminator):
             ae_opt, disc_opt = self.optimizers()
@@ -305,7 +311,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
 
         # log reconstructions (validation is done every 5 epochs by default)
         if batch_index == 2:
-            self.log_reconstructions(batch_index, images, x_recon, t_or_v='v')
+            self.log_reconstructions(images, x_recon, t_or_v='v')
 
         if isinstance(self.criterion, VQLPIPSWithDiscriminator):
 
@@ -433,7 +439,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         return ae_optimizer
 
     @torch.no_grad()
-    def log_reconstructions(self, batch_index, ground_truths, reconstructions, t_or_v='t'):
+    def log_reconstructions(self, ground_truths, reconstructions, t_or_v='t'):
         """
         log reconstructions
         """
@@ -450,29 +456,106 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
 
     def get_tokens(self, images: torch.Tensor) -> torch.IntTensor:
         """
-        :param images: B, 3, H, W
+        :param images: B, 3, H, W in range 0__1
         :return B, S batch of codebook indices
         """
 
+        images = self.preprocess_batch(images)
         return self.quantizer.vec_to_codes(self.encoder(images))
 
     def quantize(self, images: torch.Tensor) -> torch.Tensor:
         """
-        :param images: B, 3, H, W
+        :param images: B, 3, H, W in range 0__1
         :return B, S, D batch of quantized
         """
+        images = self.preprocess_batch(images)
         return rearrange(self.quantizer(self.encoder(images))[0], 'b d h w -> b (h w) d')
 
     def reconstruct(self, images: torch.Tensor) -> torch.Tensor:
         """
-        :param images: B, 3, H, W
-        :return reconstructions (B, 3, H, W)
+        :param images: B, 3, H, W in range 0__1
+        :return reconstructions (B, 3, H, W)  in range 0__1
         """
-        return self(images)[0]
+
+        images = self.preprocess_batch(images)
+        return self.preprocess_visualization(self(images)[0])
 
     def reconstruct_from_tokens(self, tokens: torch.IntTensor) -> torch.Tensor:
         """
         :param tokens: B, S where S is the sequence len
-        :return (B, 3, H, W) reconstructed images
+        :return (B, 3, H, W) reconstructed images in range 0__1
         """
-        return self.decoder(self.quantizer.codes_to_vec(tokens))
+        return self.preprocess_visualization(self.decoder(self.quantizer.codes_to_vec(tokens)))
+
+    def on_test_epoch_start(self):
+
+        # metrics for testing
+        self.test_mse = MeanSquaredError().to('cuda')
+        self.test_ssim = StructuralSimilarityIndexMeasure().to('cuda')
+        self.test_psnr = PeakSignalNoiseRatio().to('cuda')
+        self.test_rfid = FrechetInceptionDistance().to('cuda')
+
+        # test used codebook, perplexity
+        self.test_usage_count = None
+
+    def test_step(self, images, _):
+
+        # get reconstructions, used_indices
+        images = images[0] if isinstance(images, tuple) else images
+        reconstructions, _, used_indices = self.forward(self.preprocess_batch(images))
+        reconstructions = self.preprocess_visualization(reconstructions)
+
+        # batch index count (use non-deterministic for this operation)
+        torch.use_deterministic_algorithms(False)
+        used_indices = torch.bincount(used_indices.view(-1), minlength=self.cb_size)
+        torch.use_deterministic_algorithms(True)
+
+        self.test_usage_count = used_indices if self.test_usage_count is None else + used_indices
+
+        # plot reconstruction (just for sanity check)
+        # import matplotlib.pyplot as plt
+        # import numpy as np
+        # fig, ax = plt.subplots(1, 2)
+        # ax[0].imshow(np.float32(images[0].permute(1, 2, 0).cpu().numpy()))
+        # ax[1].imshow(np.float32(reconstructions[0].permute(1, 2, 0).cpu().numpy()))
+        # plt.show()
+
+        # computed Metrics:
+
+        # MSE
+        self.test_mse.update(reconstructions, images)
+
+        # SSIM
+        self.test_ssim.update(reconstructions, images)
+
+        # PSNR
+        self.test_psnr.update(reconstructions, images)
+
+        # rFID take uint 8
+        conv = ConvertImageDtype(torch.uint8)
+        reconstructions = conv(reconstructions)
+        images = conv(images)
+
+        # rFID
+        self.test_rfid.update(reconstructions, real=False)
+        self.test_rfid.update(images, real=True)
+
+    def on_test_epoch_end(self):
+
+        total_mse = self.test_mse.compute()
+        self.log(f"mse", total_mse)
+
+        total_ssim = self.test_ssim.compute()
+        self.log(f"ssim", total_ssim)
+
+        total_psnr = self.test_psnr.compute()
+        self.log(f"psnr", total_psnr)
+
+        total_fid = self.test_rfid.compute()
+        self.log(f"rfid", total_fid)
+
+        _, perplexity, cb_usage = self.quantizer.get_codebook_usage(self.test_usage_count)
+
+        # log results
+        self.log(f"used_codebook", cb_usage)
+        self.log(f"perplexity", perplexity)

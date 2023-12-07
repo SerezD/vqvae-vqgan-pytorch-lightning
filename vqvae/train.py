@@ -1,25 +1,16 @@
 import torch
 import pytorch_lightning as pl
-from ffcv.loader import OrderOption
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers.wandb import WandbLogger
-
-from ffcv.fields.rgb_image import CenterCropRGBImageDecoder
-from ffcv.transforms import ToTensor, ToTorchImage
-
-from ffcv_pl.data_loading import FFCVDataModule
-from ffcv_pl.ffcv_utils.augmentations import DivideImage255
-from ffcv_pl.ffcv_utils.utils import FFCVPipelineManager
 from pytorch_lightning.strategies import DDPStrategy
 
+from vqvae.common_utils import set_matmul_precision, get_model_conf, get_datamodule
 from vqvae.model import VQVAE
-from data.datamodules import ImageDataModule
 
 import argparse
 import math
 import os.path
 import wandb
-import yaml
 
 
 def parse_args():
@@ -46,74 +37,6 @@ def parse_args():
     parser.add_argument('--num_nodes', type=int, help='number of gpu nodes used for training', default=1)
 
     return parser.parse_args()
-
-
-def get_model_conf(filepath: str):
-    # load params
-    with open(filepath, 'r', encoding='utf-8') as stream:
-        params = yaml.safe_load(stream)
-
-    return params
-
-
-def get_datamodule(loader_type: str, dirpath: str, image_size: int, batch_size: int, workers: int, seed: int,
-                   is_dist: bool):
-    if not os.path.isdir(dirpath):
-        raise FileNotFoundError(f"dataset path not found: {dirpath}")
-
-    else:
-
-        if loader_type == 'standard':
-
-            train_folder = f'{dirpath}train/'
-            val_folder = f'{dirpath}validation/'
-            return ImageDataModule(image_size, batch_size, workers, train_folder, val_folder)
-
-        elif loader_type == 'ffcv':
-
-            train_manager = FFCVPipelineManager(
-                file_path=f'{dirpath}train.beton',
-                pipeline_transforms=[
-                    [
-                        CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
-                        ToTensor(),
-                        ToTorchImage(),
-                        DivideImage255(dtype=torch.float16)
-                    ]
-                ],
-                ordering=OrderOption.RANDOM
-            )
-
-            val_manager = FFCVPipelineManager(
-                file_path=f'{dirpath}validation.beton',
-                pipeline_transforms=[
-                    [
-                        CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
-                        ToTensor(),
-                        ToTorchImage(),
-                        DivideImage255(dtype=torch.float16)
-                    ]
-                ]
-            )
-
-            return FFCVDataModule(batch_size, workers, is_dist, train_manager, val_manager, seed=seed)
-
-        else:
-            raise ValueError(f"loader type not recognized: {loader_type}")
-
-
-def set_matmul_precision():
-    """
-    If using Ampere Gpus enable using tensor cores.
-    Don't know exactly which other devices can benefit from this, but torch should throw a warning in case.
-    Docs: https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html
-    """
-
-    gpu_cores = os.popen('nvidia-smi -L').readlines()[0]
-
-    if 'A100' in gpu_cores:
-        torch.set_float32_matmul_precision('high')
-        print('[INFO] set matmul precision "high"')
 
 
 def main():

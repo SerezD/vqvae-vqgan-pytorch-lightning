@@ -28,4 +28,5 @@ dependencies:
     - ffcv>=1.0.0
     - ffcv_pl
     - lightning-utilities
+    - torch-fidelity
     - scheduling_utils

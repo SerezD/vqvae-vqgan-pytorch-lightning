@@ -13,16 +13,12 @@ autoencoder:
 quantizer:
   num_embeddings: 1024
   embedding_dim: 256
-  type: standard
+  type: ema
   params:
     commitment_cost: 0.25
+    decay: 0.95
+    epsilon: 1e-5
   reinit_every_n_epochs:
-
-loss:
-  l1_weight: 0.1
-  l2_weight: 1.0
-  perc_weight: 0.1
-  adversarial_params: # if None - don't use Discriminator (for ablation purposes)
 
 training:
   cumulative_bs: 256

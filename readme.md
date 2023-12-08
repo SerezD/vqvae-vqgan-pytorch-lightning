@@ -21,7 +21,7 @@ Improved VQGAN: https://arxiv.org/abs/2110.04627
 
 Perceptual Loss part cloned from: https://github.com/S-aiueo32/lpips-pytorch/tree/master
 
-Discriminator cloned and modified from:  https://github.com/rosinality/stylegan2-pytorch/blob/master  
+Discriminator cloned from:  https://github.com/NVlabs/stylegan2-ada-pytorch  
 Discriminator Losses (hinge / non-saturating): https://github.com/google-research/maskgit
 
 Quantization Algorithms: 
@@ -33,11 +33,25 @@ Fast Data Loading:
    - FFCV: https://github.com/libffcv/ffcv
    - FFCV_PL: https://github.com/SerezD/ffcv_pytorch_lightning
 
+### Details on Quantization Algorithms
+
+A known problem of VQ-VAE is codebook-collapse, where only a subset of the codebook indices
+is used.  
+See for example: _Theory and Experiments on
+Vector Quantized Autoencoders_ (https://arxiv.org/pdf/1805.11063.pdf)  
+
+To avoid collapse, some solutions have been proposed (and are implemented in this repo):
+1. Re-initialize the unused codebook indices every _n_ epochs. Can be applied with standard
+or EMA Vector Quantization.
+2. Add a KL loss term to regularize the codebook distribution to a uniform prior. This is used
+in the Gumbel Softmax and Entropy Quantization algorithms.
 
 ### Installation
 
 For fast solving, I suggest to use libmamba:  
 https://www.anaconda.com/blog/a-faster-conda-for-a-growing-community
+
+*Note: Check the `pytorch-cuda` version in `environment.yml` to ensure it is compatible with your cuda version.*
 
 ```
 # Dependencies Install 
@@ -47,6 +61,14 @@ conda activate vqvae
 # package install (after cloning)
 pip install .
 ```
+
+#### Stylegan custom ops
+
+StyleGan discriminator uses custom cuda operations, written by the NVIDIA team to speed up training.   
+This requires to install NVIDIA-CUDA TOOLKIT: https://github.com/NVlabs/stylegan3/blob/main/docs/troubleshooting.md
+
+In this repo, instead of NVIDIA-CUDA TOOLKIT, the `environment.yml` installs: https://anaconda.org/conda-forge/cudatoolkit-dev  
+I found this to be an easier option, and apparently everything works fine.
 
 ### Datasets and DataLoaders
 
@@ -64,6 +86,10 @@ The dataset structure must be like the following:
       ┣ 003.jpeg
       ┣ 004.jpg
       ┗ 005.png
+     📂 test/
+      ┣ 006.jpeg
+      ┣ 007.jpg
+      ┗ 008.png
  ```
 
 If you want to use `FFCV`, you must first create the `.beton` files. For this you can use the `create_beton_file.py` script
@@ -91,19 +117,17 @@ For more information on fast loading, check:
 The configuration files `.yaml` will provide all the details on the type of autoencoder that
 you want to train. 
 Complete examples are in the `/example_confs/` directory:
-   - `standard_vqvae`: train a base vqvae with standard quantization algorithm.
-   - `standard_vqgan`: train a vqgan model with standard quantization algorithm.
-   - `ema_vqgan`: train a vqgan model with EMA variant of the quantization algorithm.
-   - `gumbel_vqgan`: train a vqgan model with Gumbel-Softmax quantization algorithm.
-   - `entropy_vqgan`: train a vqgan model with entropy loss quantization algorithm.
+   - `****_vqvae_cb1024`: train a base vqvae with different quantization algorithms.
+   - `standard_vqvae_cb4096` and `standard_vqvae_cb4096_reinit10like`: test how reinitializing unused codes improves codebook usage.
+   - `standard_vqgan_cb1024`: train a vqgan model with StyleGan discriminator, using adaptive generator weight and R1 regularization.
 
 ### Training
 
 Once dataset and configuration file are created, run training script like:  
 ```
-  python ./vqvae/train.py --params_file "./example_confs/standard_vqvae.yaml" \
-                          --dataloader standard \  # uses standard PL data-loader
-                          --dataset_path "/home/datasets/examples/" \ # contains train/validation folders
+  python ./vqvae/train.py --params_file "./example_confs/standard_vqvae_cb1024.yaml" \
+                          --dataloader ffcv \  # uses ffcv data-loader
+                          --dataset_path "/home/datasets/examples/" \ # contains train/validation .beton file
                           --save_path "./runs/" \ 
                           --run_name vqvae_standard_quantization \
                           --seed 1234 \  # fix seed for reproducibility
@@ -111,6 +135,34 @@ Once dataset and configuration file are created, run training script like:
                           --workers 8               
 ```
 
-### Metrics and Pretrained Models
+### Evaluation
 
-Coming Soon...
+To evaluate a pre-trained model, run:
+
+```
+  python ./vqvae/evaluate.py --params_file "./example_confs/standard_vqvae_cb1024.yaml" \ # config of pretrained model
+                             --dataloader ffcv \  # uses ffcv data-loader
+                             --dataset_path "/home/datasets/examples/" \ # contains test.beton file
+                             --batch_size 64 \ # evaluation is done on single gpu
+                             --seed 1234 \  # fix seed for reproducibility
+                             --loading_path "/home/runs/standard_vqvae_cb1024/last.ckpt" \ # checkpoint file
+                             --workers 8             
+```
+
+
+###  Pretrained Models, Configuration Files and Training Logs
+
+(WORK IN PROGRESS)
+
+The Evaluation process uses torchmetrics to compute L2, PSNR, SSIM, rFID
+Plus perplexity and codebook usage on the test set. 
+
+RUN NAME codebook usage, perplexity, L2, SSIM, PSNR, rFID, nGPUS * Nodes, gpu/hours
+
+VQVAE CODEBOOK 1024 STANDARD QUANTIZATION
+|             mse            │   0.004431578796356916    │
+│        perplexity         │      733.31982421875      │
+│           psnr            │    23.534406661987305     │
+│           rfid            │          52.0625          │
+│           ssim            │    0.6876464486122131     │
+│       used_codebook       │        99.70703125

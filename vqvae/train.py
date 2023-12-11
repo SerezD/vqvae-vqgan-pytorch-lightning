@@ -115,7 +115,7 @@ def main():
 
     # data loading (standard pytorch lightning or ffcv)
     datamodule = get_datamodule(args.dataloader, args.dataset_path, image_size, batch_size_per_device,
-                                workers, seed, is_dist)
+                                workers, seed, is_dist, mode='train')
 
     # callbacks
     checkpoint_callback = ModelCheckpoint(dirpath=save_checkpoint_dir, filename='{epoch:02d}', save_last=True,

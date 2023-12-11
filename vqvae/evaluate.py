@@ -50,7 +50,7 @@ def main():
 
     # data loading (standard pytorch lightning or ffcv)
     datamodule = get_datamodule(args.dataloader, args.dataset_path, image_size, batch_size,
-                                workers, seed, is_dist=False)
+                                workers, seed, is_dist=False, mode='test')
 
     # trainer
     trainer = pl.Trainer(strategy='ddp', accelerator='gpu', devices=1, precision='16-mixed', deterministic=True)

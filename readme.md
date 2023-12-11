@@ -72,24 +72,24 @@ I found this to be an easier option, and apparently everything works fine.
 
 ### Datasets and DataLoaders
 
-This repository allows for both fast (`FFCV`) and standard pytorch-lightning data loading.
+This repository allows for both fast (`FFCV`) and standard (`pytorch`) data loading.
 
 In each case, your dataset can be composed of images in `.png .jpg .bmp .JPEG` formats.  
 The dataset structure must be like the following:
  ```
   🗂 path/to/dataset/
      📂 train/
-      ┣ 000 .jpeg
+      ┣ 000.jpeg
       ┣ 001.jpg
       ┗ 002.png
      📂 validation/
       ┣ 003.jpeg
-      ┣ 004.jpg
+      ┣ 004.bmp
       ┗ 005.png
      📂 test/
       ┣ 006.jpeg
       ┣ 007.jpg
-      ┗ 008.png
+      ┗ 008.bmp
  ```
 
 If you want to use `FFCV`, you must first create the `.beton` files. For this you can use the `create_beton_file.py` script
@@ -114,7 +114,7 @@ For more information on fast loading, check:
 
 ### Configuration Files
 
-The configuration files `.yaml` will provide all the details on the type of autoencoder that
+The configuration file `.yaml` provides all the details on the type of autoencoder that
 you want to train. 
 Complete examples are in the `/example_confs/` directory:
    - `****_vqvae_cb1024`: train a base vqvae with different quantization algorithms.
@@ -138,7 +138,6 @@ Once dataset and configuration file are created, run training script like:
 ### Evaluation
 
 To evaluate a pre-trained model, run:
-
 ```
   python ./vqvae/evaluate.py --params_file "./example_confs/standard_vqvae_cb1024.yaml" \ # config of pretrained model
                              --dataloader ffcv \  # uses ffcv data-loader
@@ -149,20 +148,33 @@ To evaluate a pre-trained model, run:
                              --workers 8             
 ```
 
+The Evaluation process is based on the `torchmetrics` library (https://lightning.ai/docs/torchmetrics/stable/). For each run, 
+computed measures are L2, PSNR, SSIM, rFID for reconstruction and Perplexity, Codebook usage on the whole test set for quantization.
 
 ###  Pretrained Models, Configuration Files and Training Logs
 
-(WORK IN PROGRESS)
+In this section, you can find the evaluation results obtained for some ImageNet-1K pretrained models.
 
-The Evaluation process uses torchmetrics to compute L2, PSNR, SSIM, rFID
-Plus perplexity and codebook usage on the test set. 
+The pretrained models, training log and configuration files used can be downloaded at 
+[this link](https://drive.google.com/drive/folders/1nUSYakY9R9DPxCNqjz26hSRa3bsFbvkJ?usp=sharing) 
 
-RUN NAME codebook usage, perplexity, L2, SSIM, PSNR, rFID, nGPUS * Nodes, gpu/hours
+List of models and short description:
 
-VQVAE CODEBOOK 1024 STANDARD QUANTIZATION
-|             mse            │   0.004431578796356916    │
-│        perplexity         │      733.31982421875      │
-│           psnr            │    23.534406661987305     │
-│           rfid            │          52.0625          │
-│           ssim            │    0.6876464486122131     │
-│       used_codebook       │        99.70703125
+- **standard_vqvae_cb1024**: replication of the basic model, as described in the original vqvae paper. 
+Uses a limited codebook of only 1024 entries, serving as baseline with later tests.
+- **standard_vqvae_cb4096**: same run as previous, but uses a large codebook with 4096 entries and no reinitialization.
+Baseline used to enlight the problem of codebook collapse.
+- **standard_vqvae_cb4096_reinit10like**: same run as previous, unused codes are re-initialized every 10 epochs. 
+Shows how reinitialization can help in preventing codebook collapse.
+- **standard_vqgan_cb1024_noDisc**: ablation study. Reconstruction Loss is a combination of L2, L1 and Perceptual. 
+No Discriminator is used.
+- **More runs coming soon...**
+
+| Run Name                           | Codebook Usage | Perplexity | L2     | SSIM | PSNR  | rFID   | N gpus * hours / epochs | # (trainable) params |  
+|------------------------------------|---------------:|-----------:|--------|------|-------|--------|------------------------:|---------------------:|
+| standard_vqvae_cb1024              |        99.71 % |     733.32 | 0.0044 | 0.69 | 23.53 | 52.06  |                   2.108 |               35.8 M | 
+| standard_vqvae_cb4096              |        47.14 % |    1328.33 | 0.0042 | 0.69 | 23.77 | 50.12  |                   2.105 |               36.6 M |
+| standard_vqvae_cb4096_reinit10like |        88.45 % |    2538.91 | 0.0039 | 0.70 | 24.06 | 47.06  |                   2,110 |               36.6 M |
+| standard_vqgan_cb1024_noDisc       |        99.71 % |     754.93 | 0.0047 | 0.67 | 23.28 | 30.84  |                   2,200 |               35.8 M |
+
+_Note:_ For training, NVIDIA A100 GPUs with Tensor Core have been used.

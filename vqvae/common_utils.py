@@ -36,7 +36,8 @@ def get_model_conf(filepath: str):
 
 
 def get_datamodule(loader_type: str, dirpath: str, image_size: int, batch_size: int, workers: int, seed: int,
-                   is_dist: bool):
+                   is_dist: bool, mode: str = 'train'):
+
     if not os.path.isdir(dirpath):
         raise FileNotFoundError(f"dataset path not found: {dirpath}")
 
@@ -44,51 +45,59 @@ def get_datamodule(loader_type: str, dirpath: str, image_size: int, batch_size: 
 
         if loader_type == 'standard':
 
-            train_folder = f'{dirpath}train/'
-            val_folder = f'{dirpath}validation/'
-            test_folder = f'{dirpath}test/'
-            return ImageDataModule(image_size, batch_size, workers, train_folder, val_folder, test_folder)
+            if mode == 'train':
+                train_folder = f'{dirpath}train/'
+                val_folder = f'{dirpath}validation/'
+                return ImageDataModule(image_size, batch_size, workers, train_folder, val_folder)
+            else:
+                test_folder = f'{dirpath}test/'
+                return ImageDataModule(image_size, batch_size, workers, test_folder=test_folder)
 
         elif loader_type == 'ffcv':
 
-            train_manager = FFCVPipelineManager(
-                file_path=f'{dirpath}train.beton',
-                pipeline_transforms=[
-                    [
-                        CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
-                        ToTensor(),
-                        ToTorchImage(),
-                        DivideImage255(dtype=torch.float16)
-                    ]
-                ],
-                ordering=OrderOption.RANDOM
-            )
+            if mode == 'train':
 
-            val_manager = FFCVPipelineManager(
-                file_path=f'{dirpath}validation.beton',
-                pipeline_transforms=[
-                    [
-                        CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
-                        ToTensor(),
-                        ToTorchImage(),
-                        DivideImage255(dtype=torch.float16)
-                    ]
-                ]
-            )
+                train_manager = FFCVPipelineManager(
+                    file_path=f'{dirpath}train.beton',
+                    pipeline_transforms=[
+                        [
+                            CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
+                            ToTensor(),
+                            ToTorchImage(),
+                            DivideImage255(dtype=torch.float16)
+                        ]
+                    ],
+                    ordering=OrderOption.RANDOM
+                )
 
-            test_manager = FFCVPipelineManager(
-                file_path=f'{dirpath}test.beton',
-                pipeline_transforms=[
-                    [
-                        CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
-                        ToTensor(),
-                        ToTorchImage(),
-                        DivideImage255(dtype=torch.float16)
+                val_manager = FFCVPipelineManager(
+                    file_path=f'{dirpath}validation.beton',
+                    pipeline_transforms=[
+                        [
+                            CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
+                            ToTensor(),
+                            ToTorchImage(),
+                            DivideImage255(dtype=torch.float16)
+                        ]
                     ]
-                ]
-            )
+                )
 
-            return FFCVDataModule(batch_size, workers, is_dist, train_manager, val_manager, test_manager, seed=seed)
+                return FFCVDataModule(batch_size, workers, is_dist, train_manager, val_manager, seed=seed)
+
+            else:
+                test_manager = FFCVPipelineManager(
+                    file_path=f'{dirpath}test.beton',
+                    pipeline_transforms=[
+                        [
+                            CenterCropRGBImageDecoder((image_size, image_size), ratio=1),
+                            ToTensor(),
+                            ToTorchImage(),
+                            DivideImage255(dtype=torch.float16)
+                        ]
+                    ]
+                )
+
+                return FFCVDataModule(batch_size, workers, is_dist, test_manager=test_manager, seed=seed)
 
         else:
             raise ValueError(f"loader type not recognized: {loader_type}")

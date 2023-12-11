@@ -8,3 +8,5 @@
 /dataSources.local.xml
 .idea/
 /vqvae.egg-info/
+/data/ffcv_toy_example/
+/data/toy_example/

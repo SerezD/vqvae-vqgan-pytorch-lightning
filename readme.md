@@ -176,7 +176,8 @@ I tested with 3e-4 as in the previous runs, but NAN values in the generator/disc
 The generator loss has a fixed weight applied. rFID still improves, while all other metrics are getting worse w.r.t the vqvae baseline.
 - **standard_vqgan_cb1024_adaptive**: ablation study. Same run as the previous, but with adaptive weight applied on the generator loss, 
 as described in the taming transformer paper. Training time increases due to the gradient calculation of the adaptive weight.
-Apparently, the adaptive weight helps in reducing final rFID metric, while penalizing all other metrics (as usual).
+Apparently, the adaptive weight is worth since it improves all the reconstruction metrics w.r.t. the "fixed" case. 
+Interestingly, only 91% of the codebook is used at inference time. 
 - **More runs coming soon...**
 
 | Run Name                           | Codebook Usage | Perplexity | L2     | SSIM | PSNR  | rFID   | N gpus * hours / epochs | # (trainable) params |  

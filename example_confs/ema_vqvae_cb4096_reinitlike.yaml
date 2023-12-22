@@ -11,20 +11,17 @@ autoencoder:
     - 8
 
 quantizer:
-  num_embeddings: 1024
+  num_embeddings: 4096
   embedding_dim: 256
-  type: gumbel
+  type: ema
   params:
-    straight_through: False
-    temp: 1.0
-    kl_cost: 5e-4
-    kl_warmup_epochs: 5
-    temp_decay_epochs: 150
-    temp_final: 0.06
-  reinit_every_n_epochs: 
+    commitment_cost: 0.25
+    decay: 0.95
+    epsilon: 1e-5
+  reinit_every_n_epochs: 10
 
 training:
-  cumulative_bs: 8 # 128
+  cumulative_bs: 256
   base_lr: 3e-4  # refers to LR for cumulative_bs = 256. Will scale automatically if bs is increased/reduced
   betas:
     - 0.9

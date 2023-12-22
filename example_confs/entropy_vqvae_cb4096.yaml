@@ -11,13 +11,14 @@ autoencoder:
     - 8
 
 quantizer:
-  num_embeddings: 1024
+  num_embeddings: 4096
   embedding_dim: 256
-  type: ema
+  type: entropy
   params:
+    ent_loss_ratio: 0.1
+    ent_temperature: 0.01
+    ent_loss_type: softmax
     commitment_cost: 0.25
-    decay: 0.95
-    epsilon: 1e-5
   reinit_every_n_epochs:
 
 training:

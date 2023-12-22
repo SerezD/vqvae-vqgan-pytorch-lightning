@@ -160,27 +160,32 @@ The pretrained models, training log and configuration files used can be download
 
 List of models and short description:
 
-- **standard_vqvae_cb1024**: replication of the basic model, as described in the original vqvae paper. 
-Uses a limited codebook of only 1024 entries, serving as baseline with later tests.
-- **standard_vqvae_cb4096**: same run as previous, but uses a large codebook with 4096 entries and no reinitialization.
-Baseline used to enlight the problem of codebook collapse.
+- **standard_vqvae_cb1024**: replication of the base model, as described in the original vqvae paper. 
+Uses a limited codebook of only 1024 entries, serving as baseline with later tests. On such a complex dataset as Imagenet-1K, 
+performance is poor.
+- **standard_vqvae_cb4096**: same run as previous, but uses a larger codebook with 4096 entries and no reinitialization.
+Baseline used to enlight the problem of codebook collapse (only half of the codes are used at inference time).
 - **standard_vqvae_cb4096_reinit10like**: same run as previous, unused codes are re-initialized every 10 epochs. 
-Shows how reinitialization can help in preventing codebook collapse.
+Shows how reinitialization can help in preventing codebook collapse, also with slightly better reconstruction results.
 - **standard_vqgan_cb1024_noDisc**: ablation study. Reconstruction Loss is a combination of L2, L1 and Perceptual. 
-No Discriminator is used.
+No Discriminator is used. The result is an improvement of the rFID metric w.r.t the base vqvae. 
+All other metrics are performing worse.
 - **standard_vqgan_cb1024_fixed**: ablation study. Reconstruction Loss is a combination of L2, L1, Perceptual and Adversarial.
-The generator loss has a fixed weight applied.
-- **standard_vqgan_cb1024_adaptive**: ablation study. Reconstruction Loss is a combination of L2, L1, Perceptual and Adversarial.
-The generator loss has an adaptive weight applied, as described in the taming transformer paper.
+StyleGan Discriminator is used, increasing training time and parameters. Also note that the learning rate is now 1e-4. 
+I tested with 3e-4 as in the previous runs, but NAN values in the generator/discriminator loss appeared. 
+The generator loss has a fixed weight applied. rFID still improves, while all other metrics are getting worse w.r.t the vqvae baseline.
+- **standard_vqgan_cb1024_adaptive**: ablation study. Same run as the previous, but with adaptive weight applied on the generator loss, 
+as described in the taming transformer paper. Training time increases due to the gradient calculation of the adaptive weight.
+Apparently, the adaptive weight helps in reducing final rFID metric, while penalizing all other metrics (as usual).
 - **More runs coming soon...**
 
 | Run Name                           | Codebook Usage | Perplexity | L2     | SSIM | PSNR  | rFID   | N gpus * hours / epochs | # (trainable) params |  
 |------------------------------------|---------------:|-----------:|--------|------|-------|--------|------------------------:|---------------------:|
 | standard_vqvae_cb1024              |        99.71 % |     733.32 | 0.0044 | 0.69 | 23.53 | 52.06  |                   2.108 |               35.8 M |
 | standard_vqvae_cb4096              |        47.14 % |    1328.33 | 0.0042 | 0.69 | 23.77 | 50.12  |                   2.105 |               36.6 M |
-| standard_vqvae_cb4096_reinit10like |        88.45 % |    2538.91 | 0.0039 | 0.70 | 24.06 | 47.06  |                   2,110 |               36.6 M |
-| standard_vqgan_cb1024_noDisc       |        99.71 % |     754.93 | 0.0047 | 0.67 | 23.28 | 30.84  |                   2,200 |               35.8 M |
-| standard_vqgan_cb1024_fixed        |        99.71 % |     738.57 | 0.0068 | 0.60 | 21.68 | 28.87  |                   8,002 |               64.7 M |
-| standard_vqgan_cb1024_adaptive     |        91.02 % |     702.22 | 0.0054 | 0.65 | 22.67 | 21.56  |                   9,121 |               64.7 M |
+| standard_vqvae_cb4096_reinit10like |        88.45 % |    2538.91 | 0.0039 | 0.70 | 24.06 | 47.06  |                   2.110 |               36.6 M |
+| standard_vqgan_cb1024_noDisc       |        99.71 % |     754.93 | 0.0047 | 0.67 | 23.28 | 30.84  |                   2.200 |               35.8 M |
+| standard_vqgan_cb1024_fixed        |        99.71 % |     738.57 | 0.0068 | 0.60 | 21.68 | 28.87  |                   8.002 |               64.7 M |
+| standard_vqgan_cb1024_adaptive     |        91.02 % |     702.22 | 0.0054 | 0.65 | 22.67 | 21.56  |                   9.121 |               64.7 M |
 
 _Note:_ For training, NVIDIA A100 GPUs with Tensor Core have been used.

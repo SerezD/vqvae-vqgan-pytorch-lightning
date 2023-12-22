@@ -117,10 +117,10 @@ class EMAVectorQuantizer(BaseVectorQuantizer):
         # ema usage count: total count of each embedding trough epochs
         self.register_buffer('ema_count', torch.zeros(num_embeddings))
 
-        # same size as dict, initialized with normal
+        # same size as dict, initialized as codebook
         # the updated means
         self.register_buffer('ema_weight', torch.empty((self.num_embeddings, self.embedding_dim)))
-        self.ema_weight.data.normal_()
+        self.ema_weight.data.uniform_(-1 / self.num_embeddings, 1 / self.num_embeddings)
 
         self.decay = decay
         self.epsilon = epsilon

@@ -177,16 +177,24 @@ The generator loss has a fixed weight applied. rFID still improves, while all ot
 - **standard_vqgan_cb1024_adaptive**: ablation study. Same run as the previous, but with adaptive weight applied on the generator loss, 
 as described in the taming transformer paper. Training time increases due to the gradient calculation of the adaptive weight.
 Apparently, the adaptive weight is worth since it improves all the reconstruction metrics w.r.t. the "fixed" case. 
-Interestingly, only 91% of the codebook is used at inference time. 
+Interestingly, only 91% of the codebook is used at inference time.
+- **standard_vqgan_cb1024_fixed_R1**: ablation study, extends the **standard_vqgan_cb1024_fixed** run. Uses a fixed weight for the generator loss and R1 regularization 
+on Discriminator loss. R1 helps in obtaining better metric everywhere, while slightly increasing training time.
+- **standard_vqgan_cb1024_adaptive_R1**: extends the **standard_vqgan_cb1024_adaptive** run. All implemented tricks are used 
+for this run for the reconstruction loss part. Has the adaptive weight for generator loss and R1 regularization for Stylegan-Discriminator loss. Still 
+maintains the standard quantization, meaning that an improvement may still be possible. Again, R1 helps in obtaining
+slightly better results w.r.t. the baseline run (**standard_vqgan_cb1024_adaptive**).
 - **More runs coming soon...**
 
-| Run Name                           | Codebook Usage | Perplexity | L2     | SSIM | PSNR  | rFID   | N gpus * hours / epochs | # (trainable) params |  
-|------------------------------------|---------------:|-----------:|--------|------|-------|--------|------------------------:|---------------------:|
-| standard_vqvae_cb1024              |        99.71 % |     733.32 | 0.0044 | 0.69 | 23.53 | 52.06  |                   2.108 |               35.8 M |
-| standard_vqvae_cb4096              |        47.14 % |    1328.33 | 0.0042 | 0.69 | 23.77 | 50.12  |                   2.105 |               36.6 M |
-| standard_vqvae_cb4096_reinit10like |        88.45 % |    2538.91 | 0.0039 | 0.70 | 24.06 | 47.06  |                   2.110 |               36.6 M |
-| standard_vqgan_cb1024_noDisc       |        99.71 % |     754.93 | 0.0047 | 0.67 | 23.28 | 30.84  |                   2.200 |               35.8 M |
-| standard_vqgan_cb1024_fixed        |        99.71 % |     738.57 | 0.0068 | 0.60 | 21.68 | 28.87  |                   8.002 |               64.7 M |
-| standard_vqgan_cb1024_adaptive     |        91.02 % |     702.22 | 0.0054 | 0.65 | 22.67 | 21.56  |                   9.121 |               64.7 M |
+| Run Name                           | Codebook Usage | Perplexity | L2     | SSIM | PSNR  | rFID  | N gpus * hours / epochs | # (trainable) params |  
+|------------------------------------|---------------:|-----------:|--------|------|-------|-------|------------------------:|---------------------:|
+| standard_vqvae_cb1024              |        99.71 % |     733.32 | 0.0044 | 0.69 | 23.53 | 52.06 |                   2.108 |               35.8 M |
+| standard_vqvae_cb4096              |        47.14 % |    1328.33 | 0.0042 | 0.69 | 23.77 | 50.12 |                   2.105 |               36.6 M |
+| standard_vqvae_cb4096_reinit10like |        88.45 % |    2538.91 | 0.0039 | 0.70 | 24.06 | 47.06 |                   2.110 |               36.6 M |
+| standard_vqgan_cb1024_noDisc       |        99.71 % |     754.93 | 0.0047 | 0.67 | 23.28 | 30.84 |                   2.200 |               35.8 M |
+| standard_vqgan_cb1024_fixed        |        99.71 % |     738.57 | 0.0068 | 0.60 | 21.68 | 28.87 |                   8.002 |               64.7 M |
+| standard_vqgan_cb1024_adaptive     |        91.02 % |     702.22 | 0.0054 | 0.65 | 22.67 | 21.56 |                   9.121 |               64.7 M |
+| standard_vqgan_cb1024_fixed_R1     |       100.00 % |     737.21 | 0.0067 | 0.61 | 21.71 | 25.98 |                   8.952 |               64.7 M |
+| standard_vqgan_cb1024_adaptive_R1  |        92.67 % |     720.19 | 0.0053 | 0.66 | 22.75 | 20.95 |                  10.223 |               64.7 M |
 
 _Note:_ For training, NVIDIA A100 GPUs with Tensor Core have been used.

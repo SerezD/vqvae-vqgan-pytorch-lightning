@@ -14,13 +14,13 @@ quantizer:
   num_embeddings: 4096
   embedding_dim: 256
   type: gumbel
-  params:
+  params:  # Taken from DALLE paper: https://arxiv.org/pdf/2102.12092.pdf - appendix A.2
     straight_through: False
     temp: 1.0
-    kl_cost: 5e-4
-    kl_warmup_epochs: 10
-    temp_decay_epochs: 150
-    temp_final: 0.06
+    kl_cost: 0.00859375  # 6.6 / [(256 * 256 * 3) / (16 * 16 * 1)]  scale the initial value of 6.6  by the compression factor (768 in our case)
+    kl_warmup_epochs: 1  # 5000 / 3M total updates.  150 epochs * 0.0016 = 0.24 (approx to 1 epoch)
+    temp_decay_epochs: 8  # 150000 / 3M total updates. 150 epochs * 0.05 = 7.5 (approx to 8 epochs)
+    temp_final: 0.0625 # 1./16.
   reinit_every_n_epochs: 
 
 training:

@@ -192,7 +192,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
             if self.kl_warmup_epochs is not None:
                 kl_start = 0
                 kl_stop = self.kl_warmup_epochs * self.trainer.num_training_batches
-                self.quantizer.kl_warmup = LinearScheduler(kl_start, kl_stop, 0.0, kl)
+                self.quantizer.kl_warmup = CosineScheduler(kl_start, kl_stop, 0.0, kl)
 
             if self.temp_decay_epochs is not None and self.temp_final is not None:
                 temp_start = 0

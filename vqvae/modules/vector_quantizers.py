@@ -215,6 +215,7 @@ class GumbelVectorQuantizer(BaseVectorQuantizer):
         """
         super().__init__(num_embeddings, embedding_dim)
 
+        self.x_to_logits = torch.nn.Conv2d(num_embeddings, num_embeddings, 1)
         self.straight_through = straight_through
         self.temp = temp
         self.kl_cost = kl_cost
@@ -228,7 +229,7 @@ class GumbelVectorQuantizer(BaseVectorQuantizer):
         # deterministic quantization during inference
         hard = self.straight_through if self.training else True
 
-        soft_one_hot = F.gumbel_softmax(x, tau=self.temp, dim=1, hard=hard)
+        soft_one_hot = F.gumbel_softmax(self.x_to_logits(x), tau=self.temp, dim=1, hard=hard)
         quantized = einsum(soft_one_hot, self.get_codebook(), 'b n h w, n d -> b d h w')
 
         # + kl divergence to the prior (uniform) loss, increase cb usage

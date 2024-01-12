@@ -26,8 +26,10 @@ Discriminator Losses (hinge / non-saturating): https://github.com/google-researc
 
 Quantization Algorithms: 
    - Standard and EMA update: Original VQVAE paper. 
-   - Gumbel Softmax: https://github.com/karpathy/deep-vector-quantization
-   - "Entropy" Quantizer: https://github.com/google-research/maskgit
+   - Gumbel Softmax: code taken from https://github.com/karpathy/deep-vector-quantization, 
+     parameters from DALL-E paper: https://arxiv.org/abs/2102.12092. Also check: https://arxiv.org/abs/1611.01144
+     for theory.
+   - "Entropy" Quantizer: code taken from https://github.com/google-research/maskgit
 
 Fast Data Loading:
    - FFCV: https://github.com/libffcv/ffcv
@@ -115,11 +117,7 @@ For more information on fast loading, check:
 ### Configuration Files
 
 The configuration file `.yaml` provides all the details on the type of autoencoder that
-you want to train. 
-Complete examples are in the `/example_confs/` directory:
-   - `****_vqvae_cb1024`: train a base vqvae with different quantization algorithms.
-   - `standard_vqvae_cb4096` and `standard_vqvae_cb4096_reinit10like`: test how reinitializing unused codes improves codebook usage.
-   - `standard_vqgan_cb1024`: train a vqgan model with StyleGan discriminator, using adaptive generator weight and R1 regularization.
+you want to train.
 
 ### Training
 
@@ -153,48 +151,71 @@ computed measures are L2, PSNR, SSIM, rFID for reconstruction and Perplexity, Co
 
 ###  Pretrained Models, Configuration Files and Training Logs
 
-In this section, you can find the evaluation results obtained for some ImageNet-1K pretrained models.
+In this section, you can find the evaluation results obtained for some _ImageNet-1K_ pretrained models.
 
 The pretrained models, training log and configuration files used can be downloaded at 
 [this link](https://drive.google.com/drive/folders/1nUSYakY9R9DPxCNqjz26hSRa3bsFbvkJ?usp=sharing) 
 
-List of models and short description:
+List of tested models and short description:
+
+**Ablations: different quantization algorithms**
+- **standard_vqvae_cb4096**: replication of the base model, as described in the original vqvae paper.
+Uses a large codebook with 4096 entries and no reinitialization. Enlights the problem of codebook collapse 
+(only half of the codes are used at inference time).
+- **standard_vqvae_cb4096_reinit10like**: same run as previous, unused codes are re-initialized every 10 epochs. 
+Shows how reinitialization can help in preventing codebook collapse, also with slightly better reconstruction results.
+- **ema_vqvae_cb4096**: Standard VAE using the EMA (**exponential moving average**) algorithm for learning the codebook, as 
+described in the Appendix of VQVAE paper. Results are similar to the base run, with a small reduction in trainable 
+parameters (since codebook is not directly trained).
+- **entropy_vqvae_cb4096**: Test the quantization algorithm showed in MaskGit code. 
+I could not find any references in the code or the paper, so I don't exactly know where this comes from. 
+Anyway, codebook usage is not high, but the codes are very well distributed (high perplexity). 
+Also, rFID seems positively affected.
+- **gumbel_vqvae_cb4096**: Uses gumbel-softmax trick during quantization. This has also been used in the DALL-E paper. 
+It achieves the better codebook usage, but reconstructions metrics are the worst. Note that his may be due to a poor choice
+of hyperparameters.
+
+| Run Name                            | Codebook Usage |    Perplexity | L2         | SSIM      | PSNR      | rFID      |    N gpus * hours / epochs |    # (trainable) params |  
+|-------------------------------------|---------------:|--------------:|------------|-----------|-----------|-----------|---------------------------:|------------------------:|
+| standard_vqvae_cb4096               |        47.14 % |       1328.33 | 0.0042     | 0.69      | 23.77     | 50.12     |                  **2.105** |                  36.6 M |
+| standard_vqvae_cb4096_reinit10like  |        88.45 % |       2538.91 | **0.0039** | **0.70**  | **24.06** | **47.06** |                      2.110 |                  36.6 M |
+| ema_vqvae_cb4096                    |        75.09 % |       1693.17 | 0.0040     | **0.70**  | 23.97     | 48.06     |                      2.118 |              **35.6 M** |
+| entropy_vqvae_cb4096                |        64.16 % |       2374.97 | 0.0044     | 0.68      | 23.50     | 47.50     |                      2.194 |                  36.6 M |
+| gumbel_vqvae_cb4096                 |    **96.99 %** |   **3475.23** | 0.0046     | 0.67      | 23.38     | 59.25     |                      2.358 |                  55.4 M |
+
+**Ablations: test the GAN Loss part**
 
 - **standard_vqvae_cb1024**: replication of the base model, as described in the original vqvae paper. 
 Uses a limited codebook of only 1024 entries, serving as baseline with later tests. On such a complex dataset as Imagenet-1K, 
 performance is poor.
-- **standard_vqvae_cb4096**: same run as previous, but uses a larger codebook with 4096 entries and no reinitialization.
-Baseline used to enlight the problem of codebook collapse (only half of the codes are used at inference time).
-- **standard_vqvae_cb4096_reinit10like**: same run as previous, unused codes are re-initialized every 10 epochs. 
-Shows how reinitialization can help in preventing codebook collapse, also with slightly better reconstruction results.
-- **standard_vqgan_cb1024_noDisc**: ablation study. Reconstruction Loss is a combination of L2, L1 and Perceptual. 
+- **standard_vqgan_cb1024_noDisc**: Reconstruction Loss is a combination of L2, L1 and Perceptual. 
 No Discriminator is used. The result is an improvement of the rFID metric w.r.t the base vqvae. 
 All other metrics are performing worse.
-- **standard_vqgan_cb1024_fixed**: ablation study. Reconstruction Loss is a combination of L2, L1, Perceptual and Adversarial.
+- **standard_vqgan_cb1024_fixed**: Reconstruction Loss is a combination of L2, L1, Perceptual and Adversarial.
 StyleGan Discriminator is used, increasing training time and parameters. Also note that the learning rate is now 1e-4. 
 I tested with 3e-4 as in the previous runs, but NAN values in the generator/discriminator loss appeared. 
 The generator loss has a fixed weight applied. rFID still improves, while all other metrics are getting worse w.r.t the vqvae baseline.
-- **standard_vqgan_cb1024_adaptive**: ablation study. Same run as the previous, but with adaptive weight applied on the generator loss, 
+- **standard_vqgan_cb1024_adaptive**: Same run as the previous, but with adaptive weight applied on the generator loss, 
 as described in the taming transformer paper. Training time increases due to the gradient calculation of the adaptive weight.
 Apparently, the adaptive weight is worth since it improves all the reconstruction metrics w.r.t. the "fixed" case. 
 Interestingly, only 91% of the codebook is used at inference time.
-- **standard_vqgan_cb1024_fixed_R1**: ablation study, extends the **standard_vqgan_cb1024_fixed** run. Uses a fixed weight for the generator loss and R1 regularization 
+- **standard_vqgan_cb1024_fixed_R1**: Extends the **standard_vqgan_cb1024_fixed** run. Uses a fixed weight for the generator loss and R1 regularization 
 on Discriminator loss. R1 helps in obtaining better metric everywhere, while slightly increasing training time.
-- **standard_vqgan_cb1024_adaptive_R1**: extends the **standard_vqgan_cb1024_adaptive** run. All implemented tricks are used 
-for this run for the reconstruction loss part. Has the adaptive weight for generator loss and R1 regularization for Stylegan-Discriminator loss. Still 
-maintains the standard quantization, meaning that an improvement may still be possible. Again, R1 helps in obtaining
-slightly better results w.r.t. the baseline run (**standard_vqgan_cb1024_adaptive**).
-- **More runs coming soon...**
+- **standard_vqgan_cb1024_adaptive_R1**: Extends the **standard_vqgan_cb1024_adaptive** run. All implemented tricks are used 
+for this run for the reconstruction loss part. Has the adaptive weight for generator loss and R1 regularization for Stylegan-Discriminator loss. 
+Again, R1 helps in obtaining slightly better results w.r.t. the baseline run (**standard_vqgan_cb1024_adaptive**).
 
-| Run Name                           | Codebook Usage | Perplexity | L2     | SSIM | PSNR  | rFID  | N gpus * hours / epochs | # (trainable) params |  
-|------------------------------------|---------------:|-----------:|--------|------|-------|-------|------------------------:|---------------------:|
-| standard_vqvae_cb1024              |        99.71 % |     733.32 | 0.0044 | 0.69 | 23.53 | 52.06 |                   2.108 |               35.8 M |
-| standard_vqvae_cb4096              |        47.14 % |    1328.33 | 0.0042 | 0.69 | 23.77 | 50.12 |                   2.105 |               36.6 M |
-| standard_vqvae_cb4096_reinit10like |        88.45 % |    2538.91 | 0.0039 | 0.70 | 24.06 | 47.06 |                   2.110 |               36.6 M |
-| standard_vqgan_cb1024_noDisc       |        99.71 % |     754.93 | 0.0047 | 0.67 | 23.28 | 30.84 |                   2.200 |               35.8 M |
-| standard_vqgan_cb1024_fixed        |        99.71 % |     738.57 | 0.0068 | 0.60 | 21.68 | 28.87 |                   8.002 |               64.7 M |
-| standard_vqgan_cb1024_adaptive     |        91.02 % |     702.22 | 0.0054 | 0.65 | 22.67 | 21.56 |                   9.121 |               64.7 M |
-| standard_vqgan_cb1024_fixed_R1     |       100.00 % |     737.21 | 0.0067 | 0.61 | 21.71 | 25.98 |                   8.952 |               64.7 M |
-| standard_vqgan_cb1024_adaptive_R1  |        92.67 % |     720.19 | 0.0053 | 0.66 | 22.75 | 20.95 |                  10.223 |               64.7 M |
+
+| Run Name                           |    Codebook Usage |    Perplexity | L2          | SSIM      | PSNR      | rFID       | N gpus * hours / epochs |     # (trainable) params |  
+|------------------------------------|------------------:|--------------:|-------------|-----------|-----------|------------|------------------------:|-------------------------:|
+| standard_vqvae_cb1024              |           99.71 % |        733.32 | **0.0044**  | **0.69**  | **23.53** | 52.06      |               **2.108** |               **35.8 M** |
+| standard_vqgan_cb1024_noDisc       |           99.71 % |    **754.93** | 0.0047      | 0.67      | 23.28     | 30.84      |                   2.200 |               **35.8 M** |
+| standard_vqgan_cb1024_fixed        |           99.71 % |        738.57 | 0.0068      | 0.60      | 21.68     | 28.87      |                   8.002 |                   64.7 M |
+| standard_vqgan_cb1024_adaptive     |           91.02 % |        702.22 | 0.0054      | 0.65      | 22.67     | 21.56      |                   9.121 |                   64.7 M |
+| standard_vqgan_cb1024_fixed_R1     |      **100.00 %** |        737.21 | 0.0067      | 0.61      | 21.71     | 25.98      |                   8.952 |                   64.7 M |
+| standard_vqgan_cb1024_adaptive_R1  |           92.67 % |        720.19 | 0.0053      | 0.66      | 22.75     | **20.95**  |                  10.223 |                   64.7 M |
+
+
+**TODO: test different quantization algorithms with VQGAN**
 
 _Note:_ For training, NVIDIA A100 GPUs with Tensor Core have been used.

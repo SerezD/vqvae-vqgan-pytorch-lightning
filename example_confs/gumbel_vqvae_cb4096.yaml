@@ -18,8 +18,8 @@ quantizer:
     straight_through: False
     temp: 1.0
     kl_cost: 0.00859375  # 6.6 / [(256 * 256 * 3) / (16 * 16 * 1)]  scale the initial value of 6.6  by the compression factor (768 in our case)
-    kl_warmup_epochs: 1  # 5000 / 3M total updates.  150 epochs * 0.0016 = 0.24 (approx to 1 epoch)
-    temp_decay_epochs: 8  # 150000 / 3M total updates. 150 epochs * 0.05 = 7.5 (approx to 8 epochs)
+    kl_warmup_epochs: 0.24  # 5000 / 3M total updates.  150 epochs * 0.0016 = 0.24
+    temp_decay_epochs: 7.5  # 150000 / 3M total updates. 150 epochs * 0.05 = 7.5
     temp_final: 0.0625 # 1./16.
   reinit_every_n_epochs: 
 

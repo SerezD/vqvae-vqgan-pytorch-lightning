@@ -41,8 +41,8 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
                                 standard --> {commitment_cost: float}
                                 ema --> {commitment_cost: float, decay: float, epsilon: float}
                                 gumbel --> {straight_through: bool, temp: float, kl_cost: float,
-                                            kl_warmup_epochs: int or None,
-                                            temp_decay_epochs: int or None,
+                                            kl_warmup_epochs: float or None,
+                                            temp_decay_epochs: float or None,
                                             temp_final: float or None}
                                 entropy --> {ent_loss_ratio: float, ent_temperature: float,
                                              ent_loss_type: str = 'softmax' or 'argmax',
@@ -191,12 +191,12 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
             temp, kl = self.quantizer.get_consts()
             if self.kl_warmup_epochs is not None:
                 kl_start = 0
-                kl_stop = self.kl_warmup_epochs * self.trainer.num_training_batches
+                kl_stop = int(self.kl_warmup_epochs * self.trainer.num_training_batches)
                 self.quantizer.kl_warmup = CosineScheduler(kl_start, kl_stop, 0.0, kl)
 
             if self.temp_decay_epochs is not None and self.temp_final is not None:
                 temp_start = 0
-                temp_stop = self.temp_decay_epochs * self.trainer.num_training_batches
+                temp_stop = int(self.temp_decay_epochs * self.trainer.num_training_batches)
                 self.quantizer.temp_decay = CosineScheduler(temp_start, temp_stop, temp, self.temp_final)
 
     def on_train_batch_start(self, _: Any, batch_index: int):

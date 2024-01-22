@@ -216,6 +216,21 @@ Again, R1 helps in obtaining slightly better results w.r.t. the baseline run (**
 | standard_vqgan_cb1024_adaptive_R1  |           92.67 % |        720.19 | 0.0053      | 0.66      | 22.75     | **20.95**  |                  10.223 |                   64.7 M |
 
 
-**TODO: test different quantization algorithms with VQGAN**
+**Test different quantization algorithms with VQGAN**
+
+- **standard_vqgan_cb1024_adaptive_R1**: Same run as above, reported here for better comparison.
+- **ema_vqgan_cb1024_adaptive_R1**: Despite a slightly better codebook usage, all other metrics perform equal or worse 
+w.r.t. the standard algorithm (including perplexity).
+- **entropy_vqgan_cb1024_adaptive_R1**: Despite higher perplexity, the percentage of codebook usage is low, probably
+causing the bad performance in reconstruction metrics.
+- **gumbel_vqgan_cb1024_adaptive_R1**: obtains a perfect codebook usage and very high perplexity, but cannot beat the
+standard run on rFID.
+
+| Run Name                          |    Codebook Usage |    Perplexity | L2          | SSIM       | PSNR       | rFID        | N gpus * hours / epochs | # (trainable) params |  
+|-----------------------------------|------------------:|--------------:|-------------|------------|------------|-------------|------------------------:|---------------------:|
+| standard_vqgan_cb1024_adaptive_R1 |           92.67 % |        720.19 | **0.0053**  | **0.66**   | 22.75      | **20.95**   |                  10.223 |               64.7 M |
+| ema_vqgan_cb1024_adaptive_R1      |           99.51 % |        677.71 |  **0.0053** | **0.66**   | 22.74      | 21.20       |              **10.082** |           **64.4 M** |
+| entropy_vqgan_cb1024_adaptive_R1  |           80.85 % |        788.82 | 0.0056      | 0.64       | 22.52      | 26.20       |                  10.107 |               64.7 M |
+| gumbel_vqgan_cb1024_adaptive_R1   |      **100.00 %** |    **957.94** | **0.0053**  | 0.64       | **22.79**  | 23.05       |                  10.335 |               66.1 M |
 
 _Note:_ For training, NVIDIA A100 GPUs with Tensor Core have been used.

@@ -18,10 +18,10 @@ class ResBlock(nn.Module):
         else:
             self.conv_shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=(1, 1), padding='same', bias=False)
 
-        self.norm1 = nn.GroupNorm(num_groups=32, num_channels=in_channels)
+        self.norm1 = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6)
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=(3, 3), padding='same', bias=False)
 
-        self.norm2 = nn.GroupNorm(num_groups=32, num_channels=out_channels)
+        self.norm2 = nn.GroupNorm(num_groups=32, num_channels=out_channels, eps=1e-6)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=(3, 3), padding='same', bias=False)
 
     def forward(self, x):
@@ -33,6 +33,9 @@ class ResBlock(nn.Module):
         residual = self.conv2(residual)
 
         if self.conv_shortcut is not None:
+            # contiguous prevents warning:
+            # https://github.com/pytorch/pytorch/issues/47163
+            # https://discuss.pytorch.org/t/why-does-pytorch-prompt-w-accumulate-grad-h-170-warning-grad-and-param-do-not-obey-the-gradient-layout-contract-this-is-not-an-error-but-may-impair-performance/107760
             x = self.conv_shortcut(x.contiguous())
 
         return x + residual
@@ -54,14 +57,17 @@ class Downsample(nn.Module):
 
 class Upsample(nn.Module):
 
-    def __init__(self, scale_factor: float = 2.0, mode: str = 'nearest'):
+    def __init__(self, channels: int, scale_factor: float = 2.0, mode: str = 'nearest-exact'):
         super().__init__()
 
         self.scale_factor = scale_factor
         self.mode = mode
 
+        self.conv = torch.nn.Conv2d(channels, channels, kernel_size=(3, 3), stride=(1, 1), padding='same')
+
     def forward(self, x):
-        return torch.nn.functional.interpolate(x, scale_factor=self.scale_factor, mode=self.mode)
+        x = torch.nn.functional.interpolate(x, scale_factor=self.scale_factor, mode=self.mode)
+        return self.conv(x)
 
 
 class Encoder(nn.Module):
@@ -87,7 +93,7 @@ class Encoder(nn.Module):
 
         self.final_residual = nn.Sequential(*[ResBlock(ch_in) for _ in range(num_res_blocks)])
 
-        self.norm = nn.GroupNorm(num_groups=32, num_channels=ch_in)
+        self.norm = nn.GroupNorm(num_groups=32, num_channels=ch_in, eps=1e-6)
         self.conv_out = torch.nn.Conv2d(ch_in, embedding_dim, kernel_size=(1, 1), padding='same')
 
     def forward(self, x):
@@ -120,11 +126,11 @@ class Decoder(nn.Module):
                 blocks.append(ResBlock(ch_in, ch_out))
                 ch_in = ch_out
 
-            blocks.append(Upsample())
+            blocks.append(Upsample(ch_out))
 
         self.blocks = nn.Sequential(*blocks)
 
-        self.norm = nn.GroupNorm(num_groups=32, num_channels=channels)
+        self.norm = nn.GroupNorm(num_groups=32, num_channels=channels, eps=1e-6)
         self.conv_out = torch.nn.Conv2d(channels, 3, kernel_size=(3, 3), stride=(1, 1), padding=1)
 
     def forward(self, x):

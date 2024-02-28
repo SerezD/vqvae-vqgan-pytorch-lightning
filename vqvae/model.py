@@ -170,8 +170,8 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         if self.t_conf['warmup_epochs'] is not None and self.t_conf['decay_epochs'] is not None:
 
             warmup_step_start = 0
-            warmup_step_end = self.t_conf['warmup_epoch'] * self.trainer.num_training_batches
-            decay_step_end = self.t_conf['decay_epoch'] * self.trainer.num_training_batches
+            warmup_step_end = self.t_conf['warmup_epochs'] * self.trainer.num_training_batches
+            decay_step_end = self.t_conf['decay_epochs'] * self.trainer.num_training_batches
             self.scheduler = LinearCosineScheduler(warmup_step_start, decay_step_end, lr, lr / 10, warmup_step_end)
 
         elif self.t_conf['warmup_epochs'] is not None:

@@ -8,7 +8,7 @@ from torchvision.utils import make_grid
 import wandb
 
 from vqvae.modules.abstract_modules.base_autoencoder import BaseVQVAE
-from vqvae.modules.autoencoder import Encoder, Decoder
+from vqvae.modules.autoencoder import Encoder, Decoder, GroupNorm
 from vqvae.modules.loss.loss import VQLPIPSWithDiscriminator, VQLPIPS
 from vqvae.modules.vector_quantizers import VectorQuantizer, EMAVectorQuantizer, GumbelVectorQuantizer, \
     EntropyVectorQuantizer
@@ -172,7 +172,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
             warmup_step_start = 0
             warmup_step_end = self.t_conf['warmup_epochs'] * self.trainer.num_training_batches
             decay_step_end = self.t_conf['decay_epochs'] * self.trainer.num_training_batches
-            self.scheduler = LinearCosineScheduler(warmup_step_start, decay_step_end, lr, lr / 10, warmup_step_end)
+            self.scheduler = LinearCosineScheduler(warmup_step_start, decay_step_end, lr, lr / 2., warmup_step_end)
 
         elif self.t_conf['warmup_epochs'] is not None:
 
@@ -184,7 +184,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
 
             decay_step_start = 0
             decay_step_end = self.t_conf['decay_epochs'] * self.trainer.num_training_batches
-            self.scheduler = CosineScheduler(decay_step_start, decay_step_end, lr, lr / 10)
+            self.scheduler = CosineScheduler(decay_step_start, decay_step_end, lr, lr / 2.)
 
         # if quantizer is gumbel
         if isinstance(self.quantizer, GumbelVectorQuantizer):
@@ -234,7 +234,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
         :param batch: images B C H W, or tuple if ffcv loader
         :param batch_index: used for logging reconstructions only once per epoch
         """
-        images = self.preprocess_batch(batch[0] if isinstance(batch, tuple) else batch)
+        images = self.preprocess_batch(batch[0] if isinstance(batch, tuple) else batch, training=True)
         x_recon, q_loss, used_indices = self.forward(images)
 
         # log reconstructions (every 5 epochs, for one batch)
@@ -254,12 +254,17 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
             ae_opt.step()
 
             # Discriminator Optimization
-            disc_opt.zero_grad()
             step = (self.current_epoch * self.trainer.num_training_batches) + batch_index
             loss, d_loss, r1_penalty = self.criterion.forward_discriminator(images, x_recon, self.current_epoch, step)
 
-            self.manual_backward(loss)
-            disc_opt.step()
+            if loss is None:
+                # copy zero loss for logging (disc has not started yet)
+                loss = d_loss
+            else:
+                # backward on disc.
+                disc_opt.zero_grad()
+                self.manual_backward(loss)
+                disc_opt.step()
 
         elif isinstance(self.criterion, VQLPIPS):
             loss, l1_loss, l2_loss, p_loss = self.criterion(q_loss, images, x_recon)
@@ -299,6 +304,10 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
             self.quantizer.reinit_unused_codes(self.quantizer.get_codebook_usage(self.train_epoch_usage_count)[0])
 
         self.train_epoch_usage_count = None
+
+    def on_train_end(self):
+        # ensure to destroy c++ scheduler object
+        self.scheduler.destroy()
 
     def validation_step(self, batch: Any, batch_index: int):
         """
@@ -363,10 +372,6 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
 
         return
 
-    def on_train_end(self):
-        # ensure to destroy c++ scheduler object
-        self.scheduler.destroy()
-
     def configure_optimizers(self):
         def split_decay_groups(named_modules: list, named_parameters: list,
                                whitelist_weight_modules: tuple[torch.nn.Module, ...],
@@ -397,10 +402,9 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
             param_dict = {pn: p for pn, p in named_parameters}
             inter_params = decay & no_decay
             union_params = decay | no_decay
-            assert len(inter_params) == 0, "parameters %s made it into both decay/no_decay sets!" % (str(inter_params),)
-            assert len(
-                param_dict.keys() - union_params) == 0, "parameters %s were not separated into either decay/no_decay set!" \
-                                                        % (str(param_dict.keys() - union_params),)
+            assert len(inter_params) == 0, f"parameters {str(inter_params)} made it into both decay/no_decay sets!"
+            assert len(param_dict.keys() - union_params) == 0, \
+                f"parameters {str(param_dict.keys() - union_params)} were not separated into either decay/no_decay set!"
 
             optim_groups = [
                 {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": wd},
@@ -421,7 +425,7 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
             named_parameters=list(self.encoder.named_parameters()) + list(self.decoder.named_parameters()) + list(
                 self.quantizer.named_parameters()),
             whitelist_weight_modules=(torch.nn.Conv2d,),
-            blacklist_weight_modules=(torch.nn.GroupNorm, torch.nn.Embedding),
+            blacklist_weight_modules=(torch.nn.Embedding, GroupNorm),
             wd=weight_decay
         )
         ae_optimizer = torch.optim.AdamW(ae_params, lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
@@ -543,19 +547,19 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
     def on_test_epoch_end(self):
 
         total_mse = self.test_mse.compute()
-        self.log(f"mse", total_mse)
+        self.log(f"mse", total_mse, sync_dist=True)
 
         total_ssim = self.test_ssim.compute()
-        self.log(f"ssim", total_ssim)
+        self.log(f"ssim", total_ssim, sync_dist=True)
 
         total_psnr = self.test_psnr.compute()
-        self.log(f"psnr", total_psnr)
+        self.log(f"psnr", total_psnr, sync_dist=True)
 
         total_fid = self.test_rfid.compute()
-        self.log(f"rfid", total_fid)
+        self.log(f"rfid", total_fid, sync_dist=True)
 
         _, perplexity, cb_usage = self.quantizer.get_codebook_usage(self.test_usage_count)
 
         # log results
-        self.log(f"used_codebook", cb_usage)
-        self.log(f"perplexity", perplexity)
+        self.log(f"used_codebook", cb_usage, sync_dist=True)
+        self.log(f"perplexity", perplexity, sync_dist=True)

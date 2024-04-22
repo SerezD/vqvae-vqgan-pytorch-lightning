@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 import torch
-from kornia.enhance import normalize, denormalize
-from kornia.augmentation import AugmentationSequential, RandomHorizontalFlip, RandomResizedCrop
+from kornia.augmentation import AugmentationSequential, Denormalize, Normalize, RandomHorizontalFlip, RandomResizedCrop
 
 
 class BaseVQVAE(ABC):
@@ -15,10 +14,12 @@ class BaseVQVAE(ABC):
         super().__init__()
 
         self.image_size = image_size
+        self.preprocess = Normalize(mean=torch.tensor((0.5, 0.5, 0.5)), std=torch.tensor((0.5, 0.5, 0.5)))
+        self.postprocess = Denormalize(mean=torch.tensor((0.5, 0.5, 0.5)), std=torch.tensor((0.5, 0.5, 0.5)))
 
-        self.training_augmentations = AugmentationSequential(RandomResizedCrop((image_size, image_size)),
-                                                             RandomHorizontalFlip(),
-                                                             same_on_batch=False)
+        self.training_augmentations = AugmentationSequential(
+            RandomResizedCrop((image_size, image_size), scale=(0.7, 1.0), ratio=(1.0, 1.0)),
+            RandomHorizontalFlip(), same_on_batch=False)
 
         # init values for child classes (may never be implemented)
         self.scheduler = None
@@ -28,15 +29,12 @@ class BaseVQVAE(ABC):
         self.val_epoch_usage_count = None
 
     @torch.no_grad()
-    def preprocess_batch(self, images: torch.Tensor, mean: tuple = (0.485, 0.456, 0.406),
-                         std: tuple = (0.229, 0.224, 0.225), training: bool = False):
+    def preprocess_batch(self, images: torch.Tensor, training: bool = False):
         """
         :param images: batch of float32 tensors B, C, H, W assumed in range 0__1.
-        :param mean: 3 channels mean vector for normalization, default to imagenet values
-        :param std: 3 channels std vector for normalization, default to imagenet values
         :param training: if True, additionally applies self.training_augmentations
-                        (default to Random HFlip and Random Resized Crop)
-        :return normalized images B, C, H, W, ready for the forward pass.
+                        (Random HFlip and Random Resized Crop)
+        :return normalized images (-1., 1.) of shape B, C, H, W -> ready for the forward pass.
         """
 
         # ensure 0 _ 1 values (no effect if correctly loaded)
@@ -46,20 +44,19 @@ class BaseVQVAE(ABC):
         if training:
             images = self.training_augmentations(images)
 
-        images = normalize(images, torch.tensor(mean), torch.tensor(std))
+        # normalize and return
+        images = self.preprocess(images)
+
         return images
 
     @torch.no_grad()
-    def preprocess_visualization(self, images: torch.Tensor, mean: tuple = (0.485, 0.456, 0.406),
-                                 std: tuple = (0.229, 0.224, 0.225)):
+    def preprocess_visualization(self, images: torch.Tensor):
         """
-        Preprocess images by de-normalizing back to range 0_1
-        :param images: (B C H W) output of the autoencoder
-        :param mean: 3 channels mean vector for de-normalization, default to imagenet values
-        :param std: 3 channels std vector for de-normalization, default to imagenet values
+        Process images by de-normalizing back to range 0_1
+        :param images: (B C H W) output of the autoencoder in range (-1., 1.)
         :return denormalized images in range 0__1
         """
-        images = denormalize(images, torch.tensor(mean), torch.tensor(std))
+        images = self.postprocess(images)
         images = torch.clip(images, 0, 1)  # if mean,std are correct, should have no effect
         return images
 

@@ -72,7 +72,7 @@ class VQLPIPSWithDiscriminator(nn.Module):
         self.adversarial_loss_type = adversarial_conf['loss_type']
 
         self.generator_weight = adversarial_conf['g_weight']
-        self.use_adaptive_g_weight  =adversarial_conf['use_adaptive']
+        self.use_adaptive_g_weight = adversarial_conf['use_adaptive']
 
         self.r1_regularization_cost = adversarial_conf['r1_reg_weight']
         self.r1_regularization_every = adversarial_conf['r1_reg_every']
@@ -122,37 +122,45 @@ class VQLPIPSWithDiscriminator(nn.Module):
         nll_loss = l1_loss * self.l1_weight + l2_loss * self.l2_weight + p_loss * self.perceptual_weight
 
         # adversarial loss
-        logits_fake = self.discriminator(reconstructions.contiguous())
-        g_loss = generator_loss(logits_fake, loss_type=self.adversarial_loss_type)
+        if current_epoch >= self.adversarial_start_epoch:
 
-        if (self.training and current_epoch >= self.adversarial_start_epoch):
-            if self.use_adaptive_g_weight:
+            logits_fake = self.discriminator(reconstructions.contiguous())
+            g_loss = generator_loss(logits_fake, loss_type=self.adversarial_loss_type)
+
+            if self.training and self.use_adaptive_g_weight:
                 g_weight = self.calculate_adaptive_weight(p_loss, g_loss, last_layer=last_layer)
+
             else:
                 g_weight = self.generator_weight
-        else:
-            g_weight = 0.  # case: disc not started yet or testing
 
-        loss = nll_loss + g_loss * g_weight + quantizer_loss
+            loss = nll_loss + g_loss * g_weight + quantizer_loss
+        else:
+            g_loss = torch.zeros_like(nll_loss, requires_grad=False)
+            g_weight = 0.  # disc not started yet
+            loss = nll_loss + quantizer_loss
 
         return loss, l1_loss, l2_loss, p_loss, g_loss, g_weight
 
     def forward_discriminator(self, images: torch.Tensor, reconstructions: torch.Tensor,
                               current_epoch: int, current_step: int):
 
-        # discriminator update
-        d_weight = 1. if current_epoch >= self.adversarial_start_epoch else 0.  # if disc as started
-        compute_r1 = (self.training and current_step % self.r1_regularization_every == 0 and d_weight == 1. and
-                      self.r1_regularization_cost is not None)
+        if current_epoch >= self.adversarial_start_epoch:
+            compute_r1 = (self.training and current_step % self.r1_regularization_every == 0 and
+                          self.r1_regularization_cost is not None)
 
-        images = images.contiguous().requires_grad_(compute_r1)
-        logits_real = self.discriminator(images)
-        logits_fake = self.discriminator(reconstructions.contiguous().detach())
-        d_loss = discriminator_loss(logits_real, logits_fake, loss_type=self.adversarial_loss_type)
+            images = images.contiguous().requires_grad_(compute_r1)
+            logits_real = self.discriminator(images)
+            logits_fake = self.discriminator(reconstructions.contiguous().detach())
+            d_loss = discriminator_loss(logits_real, logits_fake, loss_type=self.adversarial_loss_type)
+            r1_term = self.calculate_r1_regularization_term(logits_real, images, compute_r1)
+            loss = d_loss + r1_term
 
-        r1_term = self.calculate_r1_regularization_term(logits_real, images, compute_r1)
+        else:
+            device = images.device
+            d_loss = torch.zeros((1,), device=device)
+            r1_term = 0.
+            loss = None
 
-        loss = d_weight * (d_loss + r1_term)
         return loss, d_loss, r1_term
 
 

@@ -2,29 +2,29 @@ image_size: 256
 
 # will encode to 16x16 resolution (256 / 2^4)
 autoencoder:
-  channels: 64
+  channels: 128
   num_res_blocks: 2
   channel_multipliers:
     - 1
     - 2
+    - 2
     - 4
-    - 8
 
 quantizer:
-  num_embeddings: 4096
+  num_embeddings: 1024
   embedding_dim: 256
   type: standard
   params:
     commitment_cost: 0.25
-  reinit_every_n_epochs:
+  reinit_every_n_epochs:  # may be useful in Standard or EMA modes
 
 training:
   cumulative_bs: 256
-  base_lr: 3e-4  # refers to LR for cumulative_bs = 256. Will scale automatically if bs is increased/reduced
+  base_lr: 1e-4  # refers to LR for cumulative_bs = 256. Will scale automatically if bs is increased/reduced
   betas:
-    - 0.9
-    - 0.999
+    - 0.0
+    - 0.99
   eps: 1e-8
   weight_decay: 1e-4
-  decay_epochs: 150
-  max_epochs: 150
+  decay_epochs: 250
+  max_epochs: 300

@@ -248,26 +248,23 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
             ae_opt.zero_grad()
             res = self.criterion.forward_autoencoder(q_loss, images, x_recon, self.current_epoch,
                                                      last_layer=self.decoder.conv_out.weight)
-            loss, l1_loss, l2_loss, p_loss, g_loss, g_weight = res
+            ae_loss, l1_loss, l2_loss, p_loss, g_loss, g_weight = res
 
-            self.manual_backward(loss)
+            self.manual_backward(ae_loss)
             ae_opt.step()
 
             # Discriminator Optimization
             step = (self.current_epoch * self.trainer.num_training_batches) + batch_index
             loss, d_loss, r1_penalty = self.criterion.forward_discriminator(images, x_recon, self.current_epoch, step)
 
-            if loss is None:
-                # copy zero loss for logging (disc has not started yet)
-                loss = d_loss
-            else:
-                # backward on disc.
+            if loss is not None:
+                # backward on disc only if it started.
                 disc_opt.zero_grad()
                 self.manual_backward(loss)
                 disc_opt.step()
 
         elif isinstance(self.criterion, VQLPIPS):
-            loss, l1_loss, l2_loss, p_loss = self.criterion(q_loss, images, x_recon)
+            ae_loss, l1_loss, l2_loss, p_loss = self.criterion(q_loss, images, x_recon)
             g_loss, d_loss = torch.zeros(1), torch.zeros(1)
             g_weight, r1_penalty = 0., 0.
 
@@ -275,12 +272,12 @@ class VQVAE(BaseVQVAE, pl.LightningModule):
             l2_loss = self.criterion(x_recon, images)
             l1_loss, g_loss, p_loss, d_loss = torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1)
             g_weight, r1_penalty = 0., 0.
-            loss = q_loss + l2_loss
+            ae_loss = q_loss + l2_loss
 
         self.log('g_weight', g_weight, sync_dist=True, on_step=False, on_epoch=True)
         self.log('r1_penalty', r1_penalty, sync_dist=True, on_step=False, on_epoch=True)
 
-        self.log('train/loss', loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
+        self.log('train/loss', ae_loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
         self.log('train/l1_loss', l1_loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
         self.log('train/l2_loss', l2_loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)
         self.log('train/quant_loss', q_loss.detach().cpu().item(), sync_dist=True, on_step=False, on_epoch=True)

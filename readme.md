@@ -142,14 +142,15 @@ Reproduction is really hard, mainly due to the high compression rate (256x256 to
 codebook size (1024 indices). 
 
 The pretrained models and configuration files used can be downloaded at 
-[this link](https://drive.google.com/drive/folders/1nUSYakY9R9DPxCNqjz26hSRa3bsFbvkJ?usp=sharing) 
+[https://huggingface.co/SerezD/vqvae-vqgan-pytorch-lightning](https://huggingface.co/SerezD/vqvae-vqgan-pytorch-lightning) 
 
 
-| Run Name                      | Codebook Usage | Perplexity | L2     | SSIM | PSNR  | rFID | # (trainable) params |  
-|-------------------------------|---------------:|-----------:|--------|------|-------|------|---------------------:|
-| original VQGAN (Esser et Al.) |              - |          - | -      | -    | -     | 7.94 |                    - |
-| Maskgit VQGAN  (Cheng et Al.) |              - |          - | -      | -    | -     | 2.28 |                    - |
-| Gumbel Reproduction           |        99.61 % |     892.00 | 0.0075 | 0.61 | 21.23 | 6.30 |               72.5 M |
+| Run Name                      | Codebook Usage ↑ | Perplexity ↑ | L2 ↓   | SSIM ↑ | PSNR ↑ | rFID ↓ | # (trainable) params |  
+|-------------------------------|-----------------:|-------------:|--------|--------|--------|--------|---------------------:|
+| original VQGAN (Esser et Al.) |                - |            - | -      | -      | -      | 7.94   |                    - |
+| Maskgit VQGAN  (Cheng et Al.) |                - |            - | -      | -      | -      | 2.28   |                    - |
+| Gumbel Reproduction           |          99.61 % |       892.00 | 0.0075 | 0.61   | 21.23  | 6.30   |               72.5 M |
+| Entropy Reproduction          |          99.70 % |       896.78 | 0.0082 | 0.62   | 20.82  | 6.17   |               71.1 M |
 
 
 _Note:_ For training, NVIDIA A100 GPUs with Tensor Core have been used.
@@ -178,5 +179,4 @@ Check these issues in the original VQGAN repo:
 In the reproduction, Discriminator starts only after 100 epochs. The training continues until possible. At a certain 
 point, the loss collapses (typical behavior in GANs).  
 
-I found that R1 regularization can help, while the adaptive generator weight does not improve results (used a fixed 0.1
-weight on generator).
+I found that both R1 regularization and the adaptive generator weight may help in preventing collapse.

@@ -297,14 +297,14 @@ class EntropyVectorQuantizer(BaseVectorQuantizer):
             """
             Increase codebook usage by maximizing entropy
 
-            affinity: 2D tensor of size Dim, n_classes
+            affinity: 2D tensor of size B * H * W, n_classes (codebook codes).
+                      if a vector is close to a codebook entry = higher affinity
             """
 
             n_classes = affinity.shape[-1]
 
             affinity = torch.div(affinity, temperature)
             probs = F.softmax(affinity, dim=-1)
-            log_probs = F.log_softmax(affinity + 1e-5, dim=-1)
 
             if loss_type == "softmax":
                 target_probs = probs
@@ -316,9 +316,15 @@ class EntropyVectorQuantizer(BaseVectorQuantizer):
             else:
                 raise ValueError("Entropy loss {} not supported".format(loss_type))
 
+            # compute entropy of the mean batch over codebook.
             avg_probs = torch.mean(target_probs, dim=0)
             avg_entropy = -torch.sum(avg_probs * torch.log(avg_probs + 1e-5))
-            sample_entropy = -torch.mean(torch.sum(target_probs * log_probs, dim=-1))
+
+            # entropy of samples
+            log_probs = F.log_softmax(affinity + 1e-5, dim=-1)
+            sample_entropy = -torch.sum(target_probs * log_probs, dim=-1)
+            sample_entropy = torch.mean(sample_entropy)
+
             return sample_entropy - avg_entropy
 
         batch_size, c, h, w = x.shape
@@ -327,7 +333,7 @@ class EntropyVectorQuantizer(BaseVectorQuantizer):
         flat_x = rearrange(x, 'b c h w -> (b h w) c')
         transposed_cb_weights = self.get_codebook().T
 
-        # final distance vector is (B * Latent_Dim, Codebook Dim)
+        # final distance vector is (B * H * W, N Codebook Codes)
         a2 = torch.sum(flat_x ** 2, dim=1, keepdim=True)
         b2 = torch.sum(transposed_cb_weights ** 2, dim=0, keepdim=True)
         ab = torch.matmul(flat_x, transposed_cb_weights)
